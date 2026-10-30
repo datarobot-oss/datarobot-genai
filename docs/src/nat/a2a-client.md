@@ -139,6 +139,8 @@ On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL
 |----------|----------|-------------|
 | `DATAROBOT_API_TOKEN` | Yes | DataRobot API token for registry authentication. |
 | `DATAROBOT_ENDPOINT` | Yes | DataRobot API base URL, e.g. `https://app.datarobot.com/api/v2`. |
+| `AGENT_CARD_REGISTRY_SOURCE` | No | Base URL of the registry: `datarobot_endpoint` or `prefer_enclave`. See [Choosing the registry](#choosing-the-registry). Default: `datarobot_endpoint`. |
+| `AGENT_CARD_REGISTRY_PATH` | No | Path after the base URL. See [Choosing the registry](#choosing-the-registry). Default: `/agentCards/`. |
 | `AGENT_CARD_REGISTRY_CACHE_TTL` | No | Hard cache TTL in seconds — maximum age for stale-if-error when the registry is unreachable. Default `86400` (24 h). Set to `0` to disable caching. |
 | `AGENT_CARD_REGISTRY_SOFT_CACHE_TTL` | No | Soft cache TTL in seconds — entries within this age skip registry fetches. Must not exceed the hard TTL. Defaults to the hard TTL when unset. |
 | `AGENT_CARD_REGISTRY_TIMEOUT` | No | HTTP timeout in seconds for registry requests. Default `30`. |
@@ -146,6 +148,29 @@ On enclave workloads (`DR_WORKLOAD_EXTERNAL_URL_HOST`, `DR_WORKLOAD_EXTERNAL_URL
 
 Variables are loaded via `DataRobotAppFrameworkBaseSettings`, which supports env vars, `.env`
 files, file secrets, Runtime Parameters, and Pulumi config.
+
+#### Choosing the registry
+
+By default, dragent reads agent cards from `{DATAROBOT_ENDPOINT}/agentCards/`. Two settings
+change that. The registry URL is the base URL followed by the path.
+
+- `AGENT_CARD_REGISTRY_SOURCE` picks the base URL:
+  - `datarobot_endpoint` (default): `DATAROBOT_ENDPOINT`.
+  - `prefer_enclave`: the enclave's own API, `https://{enclave host}/api/v2`, when the agent runs
+    on an enclave. Everywhere else, `DATAROBOT_ENDPOINT`.
+- `AGENT_CARD_REGISTRY_PATH` is the path after the base URL. Default: `/agentCards/`.
+
+Examples with `DATAROBOT_ENDPOINT=https://hub/api/v2`:
+
+| Goal | Settings | Agent on Control Hub | Agent on an enclave |
+|---|---|---|---|
+| Keep the current registry | None | `https://hub/api/v2/agentCards/` | `https://hub/api/v2/agentCards/` |
+| Use a registry on each enclave | `AGENT_CARD_REGISTRY_SOURCE=prefer_enclave`<br>`AGENT_CARD_REGISTRY_PATH=/discovery/agentCards/` | `https://hub/api/v2/discovery/agentCards/` | `https://{enclave host}/api/v2/discovery/agentCards/` |
+| Use another registry path on Control Hub for all agents | `AGENT_CARD_REGISTRY_PATH=/discovery/agentCards/` | `https://hub/api/v2/discovery/agentCards/` | `https://hub/api/v2/discovery/agentCards/` |
+
+To test against a registry running locally, for example on port 8801, set
+`DATAROBOT_ENDPOINT=http://localhost:8801` and keep the default path. dragent then calls
+`http://localhost:8801/agentCards/`.
 
 ## Configuration reference
 

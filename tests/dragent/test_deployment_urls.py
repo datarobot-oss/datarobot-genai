@@ -23,6 +23,7 @@ from datarobot_genai.core.runtime import is_deployment_mode
 from datarobot_genai.core.runtime import is_hosted_runtime
 from datarobot_genai.core.runtime import is_workload_mode
 from datarobot_genai.dragent.deployment_urls import _DEFAULT_DATAROBOT_ENDPOINT
+from datarobot_genai.dragent.deployment_urls import build_agent_cards_registry_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_agent_card_url
 from datarobot_genai.dragent.deployment_urls import build_deployment_mcp_url
@@ -404,6 +405,55 @@ class TestResolveExternalWorkloadApiEndpoint:
             endpoint = resolve_external_workload_api_endpoint()
         assert endpoint == "https://enclave-x.datarobot.com/api/v2"
         assert "workloads" not in endpoint
+
+
+class TestBuildAgentCardsRegistryUrl:
+    def test_default_path(self):
+        # GIVEN only an endpoint
+        # WHEN the registry URL is built
+        # THEN it is today's {endpoint}/agentCards/
+        url = build_agent_cards_registry_url("https://app.datarobot.com/api/v2")
+        assert url == "https://app.datarobot.com/api/v2/agentCards/"
+
+    def test_custom_path(self):
+        url = build_agent_cards_registry_url(
+            "https://app.datarobot.com/api/v2", "/discovery/agentCards/"
+        )
+        assert url == "https://app.datarobot.com/api/v2/discovery/agentCards/"
+
+    @pytest.mark.parametrize("endpoint", ["https://hub/api/v2", "https://hub/api/v2/"])
+    @pytest.mark.parametrize("path", ["/discovery/agentCards/", "discovery/agentCards/"])
+    def test_single_slash_between_base_and_path(self, endpoint, path):
+        assert (
+            build_agent_cards_registry_url(endpoint, path)
+            == "https://hub/api/v2/discovery/agentCards/"
+        )
+
+    def test_path_without_trailing_slash_is_kept_as_written(self):
+        # GIVEN a path without a trailing slash
+        # WHEN the registry URL is built
+        # THEN no slash is added
+        url = build_agent_cards_registry_url("https://hub/api/v2", "/discovery/agentCards")
+        assert url == "https://hub/api/v2/discovery/agentCards"
+
+    @pytest.mark.parametrize("path", ["/agentCards/", "/discovery/agentCards/"])
+    @pytest.mark.parametrize(
+        "endpoint,expected_base",
+        [
+            ("https://hub", "https://hub"),
+            ("https://hub/", "https://hub"),
+            ("https://hub/api/v2", "https://hub/api/v2"),
+            ("https://hub/api/v2/", "https://hub/api/v2"),
+            ("http://localhost:8801", "http://localhost:8801"),
+        ],
+    )
+    def test_endpoint_used_as_given(self, path, endpoint, expected_base):
+        # GIVEN any DATAROBOT_ENDPOINT spelling
+        # WHEN the registry URL is built
+        # THEN /api/v2 is never added, so it appears at most once
+        url = build_agent_cards_registry_url(endpoint, path)
+        assert url == f"{expected_base}{path}"
+        assert url.count("/api/v2") <= 1
 
 
 class TestUrlConsistency:

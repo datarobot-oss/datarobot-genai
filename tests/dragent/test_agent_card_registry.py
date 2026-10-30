@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
@@ -104,6 +105,8 @@ def _memory_registry(**kwargs) -> AgentCardRegistry:
     cache_ttl = kwargs.pop("cache_ttl", 24 * 3600)
     soft_cache_ttl = kwargs.pop("soft_cache_ttl", cache_ttl)
     on_duplicate = kwargs.pop("on_duplicate", None)
+    registry_source = kwargs.pop("registry_source", None)
+    registry_path = kwargs.pop("registry_path", None)
 
     config_kwargs: dict[str, object] = {
         "agent_card_registry_cache_ttl": cache_ttl,
@@ -111,6 +114,10 @@ def _memory_registry(**kwargs) -> AgentCardRegistry:
     }
     if on_duplicate is not None:
         config_kwargs["agent_card_registry_on_duplicate"] = on_duplicate
+    if registry_source is not None:
+        config_kwargs["agent_card_registry_source"] = registry_source
+    if registry_path is not None:
+        config_kwargs["agent_card_registry_path"] = registry_path
 
     registry = AgentCardRegistry(
         config=AgentCardRegistryConfig(**config_kwargs),
@@ -174,6 +181,47 @@ class TestAgentCardRegistryConfig:
     def test_on_duplicate_last(self):
         config = AgentCardRegistryConfig(agent_card_registry_on_duplicate="last")
         assert config.agent_card_registry_on_duplicate == "last"
+
+    def test_default_registry_source_and_path(self):
+        with patch.dict("os.environ", {}, clear=True):
+            config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_source == "datarobot_endpoint"
+        assert config.agent_card_registry_path == "/agentCards/"
+
+    def test_registry_source_and_path_from_env(self):
+        env = {
+            "AGENT_CARD_REGISTRY_SOURCE": "prefer_enclave",
+            "AGENT_CARD_REGISTRY_PATH": "/discovery/agentCards/",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            config = AgentCardRegistryConfig()
+        assert config.agent_card_registry_source == "prefer_enclave"
+        assert config.agent_card_registry_path == "/discovery/agentCards/"
+
+    def test_registry_path_is_stripped(self):
+        config = AgentCardRegistryConfig(agent_card_registry_path="  /discovery/agentCards/  ")
+        assert config.agent_card_registry_path == "/discovery/agentCards/"
+
+    def test_unknown_registry_source_rejected(self):
+        with pytest.raises(ValueError, match="agent_card_registry_source"):
+            AgentCardRegistryConfig(agent_card_registry_source="enclave_only")
+
+    @pytest.mark.parametrize(
+        "path,match",
+        [
+            ("", "must not be empty"),
+            ("   ", "must not be empty"),
+            ("https://enclave/api/v2/agentCards/", "not a URL"),
+            ("/api/v2/discovery/agentCards/", "must not start with api/v2"),
+            ("api/v2/agentCards/", "must not start with api/v2"),
+        ],
+    )
+    def test_invalid_registry_path_rejected(self, path, match):
+        # GIVEN a path that is empty, a full URL, or repeats the /api/v2 base
+        # WHEN the config is loaded
+        # THEN it is rejected rather than silently rewritten
+        with pytest.raises(ValueError, match=match):
+            AgentCardRegistryConfig(agent_card_registry_path=path)
 
 
 # ---------------------------------------------------------------------------
@@ -784,6 +832,97 @@ class TestAgentCardRegistryPrefetch:
 
 
 # ---------------------------------------------------------------------------
+# Tests: AgentCardRegistry registry URL
+# ---------------------------------------------------------------------------
+
+_HUB = "https://hub/api/v2"
+
+
+def _enclave_env(host="enclave-a.example.com", prefix="/w/1"):
+    return {"DR_WORKLOAD_EXTERNAL_URL_HOST": host, "DR_WORKLOAD_EXTERNAL_URL_PREFIX": prefix}
+
+
+class TestAgentCardRegistryUrl:
+    def test_default_source_on_enclave_uses_hub(self):
+        # GIVEN a workload on an enclave (both gateway vars set)
+        # WHEN the registry is created with the default source
+        # THEN it uses the Hub URL, as before the setting existed
+        with patch.dict(os.environ, _enclave_env(), clear=True):
+            registry = _memory_registry(endpoint=_HUB)
+        assert registry._registry_url == "https://hub/api/v2/agentCards/"
+
+    @pytest.mark.parametrize("host", ["enclave-a.example.com", "enclave-b.example.com"])
+    def test_prefer_enclave_uses_each_enclave_host(self, host):
+        # GIVEN workloads on two different enclaves
+        # WHEN prefer_enclave is set
+        # THEN each one uses its own enclave host's /api/v2 base
+        with patch.dict(os.environ, _enclave_env(host=host), clear=True):
+            registry = _memory_registry(
+                endpoint=_HUB,
+                registry_source="prefer_enclave",
+                registry_path="/discovery/agentCards/",
+            )
+        assert registry._registry_url == f"https://{host}/api/v2/discovery/agentCards/"
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            {},
+            {"DR_WORKLOAD_EXTERNAL_URL_HOST": "enclave-a.example.com"},
+            {"DR_WORKLOAD_EXTERNAL_URL_PREFIX": "/w/1"},
+            _enclave_env(prefix=""),
+        ],
+    )
+    def test_prefer_enclave_off_enclave_uses_hub(self, env):
+        # GIVEN a workload not on an enclave, or with only some gateway vars
+        # WHEN prefer_enclave is set
+        # THEN it falls back to DATAROBOT_ENDPOINT
+        with patch.dict(os.environ, env, clear=True):
+            registry = _memory_registry(
+                endpoint=_HUB,
+                registry_source="prefer_enclave",
+                registry_path="/discovery/agentCards/",
+            )
+        assert registry._registry_url == "https://hub/api/v2/discovery/agentCards/"
+
+    def test_workload_prefix_never_appears(self):
+        # GIVEN an enclave whose workload prefix looks like an API path
+        # WHEN prefer_enclave is set
+        # THEN only the enclave host is used, never the workload's own prefix
+        env = _enclave_env(prefix="/api/v2/endpoints/workloads/wl-1")
+        with patch.dict(os.environ, env, clear=True):
+            registry = _memory_registry(
+                endpoint=_HUB,
+                registry_source="prefer_enclave",
+                registry_path="/discovery/agentCards/",
+            )
+        assert (
+            registry._registry_url == "https://enclave-a.example.com/api/v2/discovery/agentCards/"
+        )
+
+    @pytest.mark.parametrize("path", ["/agentCards/", "/discovery/agentCards/"])
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "enclave-a.example.com",
+            "https://enclave-a.example.com",
+            "https://enclave-a.example.com/",
+            "enclave-a.example.com/",
+        ],
+    )
+    def test_no_double_api_v2_on_enclave(self, path, host):
+        # GIVEN an enclave host with or without a scheme or trailing slash
+        # WHEN prefer_enclave is set
+        # THEN /api/v2 appears exactly once
+        with patch.dict(os.environ, _enclave_env(host=host), clear=True):
+            registry = _memory_registry(
+                endpoint=_HUB, registry_source="prefer_enclave", registry_path=path
+            )
+        assert registry._registry_url == f"https://enclave-a.example.com/api/v2{path}"
+        assert registry._registry_url.count("/api/v2") == 1
+
+
+# ---------------------------------------------------------------------------
 # Tests: AgentCardRegistry._fetch (HTTP integration)
 # ---------------------------------------------------------------------------
 
@@ -820,6 +959,55 @@ class TestAgentCardRegistryFetch:
         assert call_kwargs["params"]["deploymentIds"] == "dep-1,dep-2"
         assert call_kwargs["params"]["limit"] == "100"
         assert call_kwargs["headers"]["Authorization"] == "Bearer my-tok"
+
+    @pytest.mark.parametrize(
+        "env",
+        [
+            {},
+            {
+                "DR_WORKLOAD_EXTERNAL_URL_HOST": "enclave-a.example.com",
+                "DR_WORKLOAD_EXTERNAL_URL_PREFIX": "/w/1",
+            },
+        ],
+    )
+    async def test_fetch_default_url_unchanged(self, mock_httpx_client, env):
+        # GIVEN no registry source/path settings, on or off an enclave
+        # WHEN the registry fetches
+        # THEN it calls {DATAROBOT_ENDPOINT}/agentCards/, as before the settings existed
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_httpx_client),
+        ):
+            registry = _memory_registry(endpoint="https://app.dr.com/api/v2", cache_ttl=3600)
+            await registry._fetch({"deploymentIds": "dep-1"})
+
+        assert mock_httpx_client.get.call_args.args[0] == "https://app.dr.com/api/v2/agentCards/"
+
+    async def test_fetch_prefer_enclave_uses_enclave_url(self, mock_httpx_client):
+        # GIVEN prefer_enclave with the agent-discovery path, on an enclave
+        # WHEN the registry fetches
+        # THEN it calls the enclave's /api/v2 + path with the same auth and params
+        env = {
+            "DR_WORKLOAD_EXTERNAL_URL_HOST": "enclave-a.example.com",
+            "DR_WORKLOAD_EXTERNAL_URL_PREFIX": "/w/1",
+        }
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch(f"{_MODULE}.httpx.AsyncClient", return_value=mock_httpx_client),
+        ):
+            registry = _memory_registry(
+                api_token="my-tok",
+                endpoint="https://app.dr.com/api/v2",
+                cache_ttl=3600,
+                registry_source="prefer_enclave",
+                registry_path="/discovery/agentCards/",
+            )
+            await registry._fetch({"deploymentIds": "dep-1,dep-2"})
+
+        call = mock_httpx_client.get.call_args
+        assert call.args[0] == "https://enclave-a.example.com/api/v2/discovery/agentCards/"
+        assert call.kwargs["params"] == {"limit": "100", "deploymentIds": "dep-1,dep-2"}
+        assert call.kwargs["headers"] == {"Authorization": "Bearer my-tok"}
 
     async def test_fetch_http_error(self):
         mock_response = MagicMock(spec=httpx.Response)
