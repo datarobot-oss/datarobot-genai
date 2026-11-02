@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.3 - 2026-10-30
+- `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set
+  one of the two new settings.
+  - `AGENT_CARD_REGISTRY_SOURCE` picks the base URL. The default, `datarobot_endpoint`, uses
+    `DATAROBOT_ENDPOINT`. `prefer_enclave` uses the enclave's own API when the agent runs on an
+    enclave, and `DATAROBOT_ENDPOINT` everywhere else.
+  - `AGENT_CARD_REGISTRY_PATH` sets the path after the base. The default is `/agentCards/`.
+  - The registry URL is logged at startup as `registry_url=...`.
+
 ## 0.31.2 - 2026-10-26
 - `dragent/plugins/datarobot_moderation_middleware`: `MODERATION_ALLOW_EXTERNAL_ACCESS_TOKENS` and `DISABLE_MODERATION` are now read through `DataRobotAppFrameworkBaseSettings`, like other runtime parameters, so the plain env var works on every runtime: Custom Models, the Workload API runtime and a local `.env`. They were read with `datarobot_dome`'s reader, which only checks the `MLOPS_RUNTIME_PARAM_<NAME>` JSON form, so on the Workload API runtime and locally they were ignored. A string payload of `"false"` now reads as off; the old reader coerced it with `bool()`, which turned it on. A value that isn't a boolean now raises a validation error instead of being read as true or false.
 

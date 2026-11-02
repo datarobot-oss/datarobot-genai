@@ -36,6 +36,7 @@ DEPLOYMENT_A2A_PATH = f"{DEPLOYMENT_DIRECT_ACCESS_PATH}/{A2A_MOUNT_PATH}"
 WORKLOAD_A2A_PATH = A2A_MOUNT_PATH
 DEPLOYMENT_MCP_PATH = "directAccess/mcp"
 MCP_PATH = "mcp"
+DEFAULT_AGENT_CARD_REGISTRY_PATH = "/agentCards/"
 
 _DEFAULT_DATAROBOT_ENDPOINT = "https://app.datarobot.com/api/v2"
 _API_V2_SUFFIX = "/api/v2"
@@ -355,7 +356,9 @@ def build_workload_agent_card_url(endpoint: str, workload_id: str) -> str:
     return f"{base}/workloads/{workload_id}/agentCard/"
 
 
-def build_agent_cards_registry_url(endpoint: str) -> str:
+def build_agent_cards_registry_url(
+    endpoint: str, path: str = DEFAULT_AGENT_CARD_REGISTRY_PATH
+) -> str:
     """Construct the URL for the central agent card registry.
 
     The central registry lists all agent cards within the user's organisation
@@ -367,11 +370,15 @@ def build_agent_cards_registry_url(endpoint: str) -> str:
     endpoint:
         DataRobot API endpoint base URL, e.g. ``https://app.datarobot.com/api/v2``.
         A trailing slash is stripped before composing the URL.
+    path:
+        Registry path relative to ``endpoint``. Leading slashes are stripped so exactly
+        one slash separates it from ``endpoint``; it is otherwise used as written,
+        including any trailing slash.
 
     Returns
     -------
     str
-        A URL of the form ``{endpoint}/agentCards/``.
+        A URL of the form ``{endpoint}/{path}``; ``{endpoint}/agentCards/`` by default.
     """
     base = endpoint.rstrip("/")
-    return f"{base}/agentCards/"
+    return f"{base}/{path.lstrip('/')}"
