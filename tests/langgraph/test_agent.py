@@ -1080,6 +1080,41 @@ def test_create_pipeline_interactions_handles_list_content_with_thinking() -> No
     assert "here is the answer" in serialized
 
 
+def test_create_pipeline_interactions_skips_tool_call_with_malformed_arguments() -> None:
+    # GIVEN an AIMessage whose raw tool calls hold one valid call and one with non-JSON
+    # arguments, which langchain files under invalid_tool_calls
+    ai = AIMessage(
+        content="",
+        additional_kwargs={
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": '{"q": "x"}'},
+                },
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {
+                        "name": "jira_get_ticket",
+                        "arguments": "{'issue_key': BUZOK-1}",
+                    },
+                },
+            ]
+        },
+    )
+    assert [tc["id"] for tc in ai.invalid_tool_calls] == ["call_2"]
+    events: list[dict[str, Any]] = [{"node1": {"messages": [HumanMessage(content="hi"), ai]}}]
+
+    # WHEN the pipeline interactions are built
+    sample = LangGraphAgent.create_pipeline_interactions_from_events(events)
+
+    # THEN only the valid call is kept
+    assert sample is not None
+    tool_calls = sample.user_input[-1].tool_calls
+    assert [(tc.name, tc.args) for tc in tool_calls] == [("search", {"q": "x"})]
+
+
 def _agent_yielding(chunks):
     """Return an agent whose graph emits the given list of message-mode payloads."""
 
