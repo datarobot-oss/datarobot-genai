@@ -40,18 +40,18 @@ def convert_to_moderations_messages(
         if isinstance(message, SystemMessage):
             continue
         if isinstance(message, AIMessage):
+            tool_calls: list[PipelineToolCall] | None = None
             # Mirror ragas: only inspect tool calls when additional_kwargs is present;
             # a truthy-but-tool-call-free additional_kwargs yields an empty list, not None.
             if message.additional_kwargs:
-                tool_calls: list[PipelineToolCall] | None = [
-                    PipelineToolCall(
-                        name=tc["function"]["name"],
-                        args=json.loads(tc["function"]["arguments"]),
-                    )
-                    for tc in message.additional_kwargs.get("tool_calls", [])
-                ]
-            else:
-                tool_calls = None
+                tool_calls = []
+                for tc in message.additional_kwargs.get("tool_calls", []):
+                    try:
+                        args = json.loads(tc["function"]["arguments"])
+                    except json.JSONDecodeError:
+                        # Arguments that are not valid JSON mark an invalid tool call; leave it out.
+                        continue
+                    tool_calls.append(PipelineToolCall(name=tc["function"]["name"], args=args))
             converted.append(PipelineAIMessage(content=message.content, tool_calls=tool_calls))
         elif isinstance(message, HumanMessage):
             converted.append(PipelineHumanMessage(content=message.content))
