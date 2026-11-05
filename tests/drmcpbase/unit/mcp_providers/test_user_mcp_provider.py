@@ -146,6 +146,29 @@ class TestUserMCPProvider:
             == mock_user_mcp_proxy_provider_cache_cls.return_value
         )
 
+    def test_init_passes_request_time_credential_providers_to_cache(
+        self, mock_user_mcp_proxy_provider_cache_cls: Mock
+    ) -> None:
+        datarobot_api_endpoint = "https://example.test/api/v2"
+        datarobot_token_provider = AsyncMock()
+        user_api_key_provider = AsyncMock()
+
+        mcp_provider = UserMCPProvider(
+            datarobot_api_endpoint,
+            datarobot_token_provider=datarobot_token_provider,
+            user_api_key_provider=user_api_key_provider,
+        )
+
+        mock_user_mcp_proxy_provider_cache_cls.assert_called_once_with(
+            datarobot_api_endpoint,
+            datarobot_token_provider=datarobot_token_provider,
+            user_api_key_provider=user_api_key_provider,
+        )
+        assert (
+            mcp_provider.user_mcp_proxy_provider_cache
+            == mock_user_mcp_proxy_provider_cache_cls.return_value
+        )
+
     @pytest.mark.asyncio
     async def test_datarobot_api_client_init_and_clean_up(
         self,
@@ -187,6 +210,56 @@ class TestUserMCPProvider:
         mock_mcp_proxy_provider.list_tools.assert_called_once_with()
         mock_asyncio_gather.assert_called_once()
         assert mock_asyncio_gather.call_args.kwargs == {"return_exceptions": True}
+
+    @pytest.mark.asyncio
+    async def test_private_method_list_tools_uses_token_provider_for_gallery_check(
+        self,
+        module_under_test: str,
+        mock_asyncio_gather: AsyncMock,
+        mock_get_user_mcp_proxy_providers_for_user: AsyncMock,
+        mock_mcp_proxy_provider: Mock,
+    ) -> None:
+        # GIVEN a request-time Sushi credential provider
+        token_provider = AsyncMock(return_value="sushi-token")
+        mock_get_user_mcp_proxy_providers_for_user.return_value = [mock_mcp_proxy_provider]
+        mcp_provider = UserMCPProvider(Mock(), datarobot_token_provider=token_provider)
+        mcp_provider.datarobot_api_client = Mock()
+
+        with patch(
+            f"{module_under_test}.check_mcp_tools_gallery_support",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_gallery_check:
+            # WHEN tools are listed
+            await mcp_provider._list_tools()
+
+        # THEN the feature-flag request uses a freshly resolved Sushi token
+        token_provider.assert_awaited_once_with()
+        mock_gallery_check.assert_awaited_once_with(
+            mcp_provider.datarobot_api_client, "sushi-token"
+        )
+        mock_get_user_mcp_proxy_providers_for_user.assert_awaited_once_with()
+        mock_asyncio_gather.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_private_method_list_tools_propagates_gallery_token_failure(
+        self, module_under_test: str
+    ) -> None:
+        token_provider = AsyncMock(side_effect=RuntimeError("mint failed"))
+        mcp_provider = UserMCPProvider(Mock(), datarobot_token_provider=token_provider)
+        mcp_provider.datarobot_api_client = Mock()
+
+        with (
+            patch(
+                f"{module_under_test}.check_mcp_tools_gallery_support",
+                new_callable=AsyncMock,
+            ) as mock_gallery_check,
+            pytest.raises(RuntimeError, match="mint failed"),
+        ):
+            await mcp_provider._list_tools()
+
+        token_provider.assert_awaited_once_with()
+        mock_gallery_check.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_private_method_list_tools_short_circuits_when_proxy_gate_disabled(
@@ -303,6 +376,42 @@ class TestUserMCPProvider:
             mock_datarobot_api_token
         )
         assert outputs == [user_mcp_deployment_id]
+
+    @pytest.mark.asyncio
+    async def test_get_user_mcp_deployment_ids_uses_token_provider(
+        self,
+        mock_datarobot_api_client: Mock,
+        mock_get_datarobot_bearer_token_from_x_datarobot_authorization: Mock,
+    ) -> None:
+        # GIVEN a request-time Sushi credential provider
+        datarobot_token_provider = AsyncMock(return_value="sushi-token")
+        mcp_provider = UserMCPProvider(Mock(), datarobot_token_provider=datarobot_token_provider)
+        mcp_provider.datarobot_api_client = mock_datarobot_api_client
+        mock_datarobot_api_client._list_mcp_deployment_ids.return_value = ["deployment-id"]
+
+        # WHEN deployments are listed
+        outputs = await mcp_provider.get_user_mcp_deployment_ids()
+
+        # THEN the Sushi token is resolved for that outbound request
+        assert outputs == ["deployment-id"]
+        datarobot_token_provider.assert_awaited_once_with()
+        mock_get_datarobot_bearer_token_from_x_datarobot_authorization.assert_not_called()
+        mock_datarobot_api_client._list_mcp_deployment_ids.assert_awaited_once_with("sushi-token")
+
+    @pytest.mark.asyncio
+    async def test_get_user_mcp_deployment_ids_propagates_token_provider_failure(
+        self, mock_datarobot_api_client: Mock
+    ) -> None:
+        # GIVEN token minting fails
+        error = RuntimeError("mint failed")
+        datarobot_token_provider = AsyncMock(side_effect=error)
+        mcp_provider = UserMCPProvider(Mock(), datarobot_token_provider=datarobot_token_provider)
+        mcp_provider.datarobot_api_client = mock_datarobot_api_client
+
+        # WHEN deployments are listed, THEN the failure is propagated
+        with pytest.raises(RuntimeError, match="mint failed"):
+            await mcp_provider.get_user_mcp_deployment_ids()
+        mock_datarobot_api_client._list_mcp_deployment_ids.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_get_user_mcp_deployment_ids_return_empty_with_uninitialized_dr_api_client(
@@ -430,6 +539,32 @@ class TestUserMCPProxyProviderCache:
         )
         assert first_result == second_result
 
+    def test_cached_provider_retains_provider_functions_not_credentials(
+        self,
+        mock_user_mcp_proxy_client_factory: Mock,
+        mock_proxy_provider_cls: Mock,
+    ) -> None:
+        datarobot_token_provider = AsyncMock()
+        user_api_key_provider = AsyncMock()
+        provider_cache = UserMCPProxyProviderCache(
+            "https://example.test/api/v2",
+            1,
+            datarobot_token_provider=datarobot_token_provider,
+            user_api_key_provider=user_api_key_provider,
+        )
+
+        first_result = provider_cache.get("deployment-id")
+        second_result = provider_cache.get("deployment-id")
+
+        mock_user_mcp_proxy_client_factory.assert_called_once_with(
+            "https://example.test/api/v2",
+            "deployment-id",
+            datarobot_token_provider=datarobot_token_provider,
+            user_api_key_provider=user_api_key_provider,
+        )
+        mock_proxy_provider_cls.assert_called_once()
+        assert first_result == second_result
+
     @pytest.mark.parametrize(
         "user_mcp_deployment_id, namespace_transform_value",
         [
@@ -531,6 +666,36 @@ class TestMCPProxyClientSetup:
         )
         assert output == mock_proxy_client_cls.return_value
 
+    def test_get_user_mcp_proxy_client_factory_passes_credential_providers(
+        self,
+        mock_get_user_mcp_endpoint: Mock,
+        mock_httpx_async_client_factory: Mock,
+        mock_proxy_client_cls: Mock,
+        mock_streamable_http_transport_cls: Mock,
+        mock_user_mcp_proxy_auth_cls: Mock,
+    ) -> None:
+        datarobot_token_provider = AsyncMock()
+        user_api_key_provider = AsyncMock()
+        factory_func = user_mcp_proxy_client_factory(
+            "https://example.test/api/v2",
+            "deployment-id",
+            datarobot_token_provider=datarobot_token_provider,
+            user_api_key_provider=user_api_key_provider,
+        )
+
+        output = factory_func()
+
+        mock_user_mcp_proxy_auth_cls.assert_called_once_with(
+            datarobot_token_provider=datarobot_token_provider,
+            user_api_key_provider=user_api_key_provider,
+        )
+        mock_streamable_http_transport_cls.assert_called_once_with(
+            url=mock_get_user_mcp_endpoint.return_value,
+            auth=mock_user_mcp_proxy_auth_cls.return_value,
+            httpx_client_factory=mock_httpx_async_client_factory,
+        )
+        assert output == mock_proxy_client_cls.return_value
+
 
 class TestUserMCPProxyAuth:
     @pytest.fixture
@@ -588,3 +753,68 @@ class TestUserMCPProxyAuth:
             pass
         mock_fastmcp_get_http_request.assert_called_once_with()
         assert user_mcp_request.headers == original_user_mcp_request_headers
+
+    @pytest.mark.asyncio
+    async def test_resolves_separate_credentials_for_every_direct_access_request(
+        self, mock_fastmcp_get_http_request: Mock
+    ) -> None:
+        # GIVEN cached proxy auth with request-time providers
+        datarobot_token_provider = AsyncMock(side_effect=["sushi-1", "sushi-2"])
+        user_api_key_provider = AsyncMock(side_effect=["api-key-1", "api-key-2"])
+        auth = UserMCPProxyAuth(
+            datarobot_token_provider=datarobot_token_provider,
+            user_api_key_provider=user_api_key_provider,
+        )
+
+        # WHEN two outbound requests use the same cached auth object
+        requests = [httpx.Request("POST", "https://example.test/mcp") for _ in range(2)]
+        for outbound_request in requests:
+            async for _ in auth.async_auth_flow(outbound_request):
+                pass
+
+        # THEN no credential is retained between requests and each header has one purpose
+        assert requests[0].headers["Authorization"] == "Bearer sushi-1"
+        assert requests[0].headers["X-DataRobot-Authorization"] == "Bearer api-key-1"
+        assert requests[1].headers["Authorization"] == "Bearer sushi-2"
+        assert requests[1].headers["X-DataRobot-Authorization"] == "Bearer api-key-2"
+        assert datarobot_token_provider.await_count == 2
+        assert user_api_key_provider.await_count == 2
+        mock_fastmcp_get_http_request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_omits_missing_user_api_key_with_warning(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        mock_fastmcp_get_http_request: Mock,
+    ) -> None:
+        auth = UserMCPProxyAuth(
+            datarobot_token_provider=AsyncMock(return_value="sushi-token"),
+            user_api_key_provider=AsyncMock(return_value=None),
+        )
+        outbound_request = httpx.Request("POST", "https://example.test/mcp")
+
+        async for _ in auth.async_auth_flow(outbound_request):
+            pass
+
+        assert outbound_request.headers["Authorization"] == "Bearer sushi-token"
+        assert "X-DataRobot-Authorization" not in outbound_request.headers
+        assert "No user API key is available" in caplog.text
+        mock_fastmcp_get_http_request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_propagates_datarobot_token_provider_failure(
+        self, mock_fastmcp_get_http_request: Mock
+    ) -> None:
+        auth = UserMCPProxyAuth(
+            datarobot_token_provider=AsyncMock(side_effect=RuntimeError("mint failed")),
+            user_api_key_provider=AsyncMock(return_value="api-key"),
+        )
+        outbound_request = httpx.Request("POST", "https://example.test/mcp")
+
+        with pytest.raises(RuntimeError, match="mint failed"):
+            async for _ in auth.async_auth_flow(outbound_request):
+                pass
+
+        assert "Authorization" not in outbound_request.headers
+        assert "X-DataRobot-Authorization" not in outbound_request.headers
+        mock_fastmcp_get_http_request.assert_not_called()

@@ -58,7 +58,7 @@ The following requirements apply before installing or running samples:
 
 | Requirement | Notes |
 |---|---|
-| Python 3.11–3.13 | Required for all installs |
+| Python 3.11–3.14 | Required for all installs |
 | DataRobot account | Required for gateway, deployments, MCP, and platform features |
 | Agent framework extra | One of `crewai`, `langgraph`, or `llamaindex`; use `dragent` for NAT/DRAgent |
 
@@ -66,7 +66,7 @@ For local development, also install [`uv`](https://docs.astral.sh/uv/), [Task](h
 
 ## Installation
 
-Requires Python 3.11–3.13. Install the extra that matches the target framework:
+Requires Python 3.11–3.14. Install the extra that matches the target framework:
 ```bash
 pip install "datarobot-genai[crewai]"
 pip install "datarobot-genai[langgraph]"
@@ -109,7 +109,7 @@ See [docs/README.md](https://github.com/datarobot-oss/datarobot-genai/blob/main/
 
 # Develop
 
-Requires Python 3.11–3.13, uv, Task CLI, and pre-commit.
+Requires Python 3.11–3.14, uv, Task CLI, and pre-commit.
 ```bash
 uv sync --all-extras --dev
 pre-commit install

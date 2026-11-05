@@ -54,6 +54,7 @@ class FeatureFlagEvaluation:
 
 async def check_mcp_tools_gallery_support(
     datarobot_api_client: DataRobotClientWithAsyncAPI | None,
+    datarobot_api_token: str | None = None,
 ) -> bool:
     """Return True when the MCP tools-gallery feature is enabled for the request's user.
 
@@ -62,12 +63,19 @@ async def check_mcp_tools_gallery_support(
     route gate (which passes a short-lived client). None-safe — returns False when the
     client is not yet available (e.g. a request that races a provider's lifespan), so
     callers no longer need a separate ``is_datarobot_api_client_initialized`` guard.
-    Otherwise it delegates to
+    When ``datarobot_api_token`` is supplied, it is used directly for the feature-flag request.
+    Otherwise the function delegates to
     :meth:`FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request`,
     which reads the user's bearer token from the request context and fails closed to False.
     """
     if datarobot_api_client is None:
         return False
+    if datarobot_api_token is not None:
+        return await get_feature_flag_enablement_with_existing_datarobot_client(
+            datarobot_api_client,
+            datarobot_api_token,
+            "ENABLE_MCP_TOOLS_GALLERY_SUPPORT",
+        )
     return await FeatureFlagEvaluation.is_mcp_tools_gallery_support_enabled_for_user_in_mcp_request(
         datarobot_api_client
     )

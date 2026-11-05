@@ -138,3 +138,25 @@ class TestCheckMcpToolsGallerySupport:
 
         assert await check_mcp_tools_gallery_support(client) is enabled
         mock_evaluator.assert_awaited_once_with(client)
+
+    @pytest.mark.asyncio
+    async def test_uses_explicit_token_without_reading_request_headers(
+        self, module_under_test: str, mock_evaluator: AsyncMock
+    ) -> None:
+        # GIVEN a request-time credential supplied by the embedding service
+        client = Mock()
+        token = "sushi-token"
+        with patch(
+            f"{module_under_test}.get_feature_flag_enablement_with_existing_datarobot_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_get_feature_flag:
+            # WHEN gallery support is checked
+            enabled = await check_mcp_tools_gallery_support(client, token)
+
+        # THEN that credential is used directly and header-based resolution is bypassed
+        assert enabled is True
+        mock_get_feature_flag.assert_awaited_once_with(
+            client, token, "ENABLE_MCP_TOOLS_GALLERY_SUPPORT"
+        )
+        mock_evaluator.assert_not_awaited()

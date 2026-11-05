@@ -25,7 +25,7 @@ Install and runtime requirements before using the library:
 
 | Requirement | Notes |
 |---|---|
-| Python 3.11–3.13 | Required for all installs |
+| Python 3.11–3.14 | Required for all installs |
 | DataRobot account | Required for gateway, deployments, MCP, and platform features |
 | `DATAROBOT_API_TOKEN` / `DATAROBOT_ENDPOINT` | See [configuration reference](src/index.md#configuration-reference) |
 | Agent framework extra | Install `datarobot-genai[langgraph]`, `[llamaindex]`, `[crewai]`, or `[dragent]` for NAT/DRAgent |

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.4 - 2026-11-05
+- `drmcpbase`: `UserMCPProvider` accepts request-time DataRobot token and user API-key
+  providers. The DataRobot token authenticates gallery checks, deployment discovery, and user-MCP
+  direct access, while the user API key is isolated to `X-DataRobot-Authorization` on direct-access
+  requests. Existing header-based behavior is unchanged when providers are omitted.
+- Add Python 3.14 support so Python 3.14 services can consume the current release line.
+
 ## 0.31.3 - 2026-10-30
 - `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set
   one of the two new settings.
