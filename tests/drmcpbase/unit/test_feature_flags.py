@@ -145,7 +145,7 @@ class TestCheckMcpToolsGallerySupport:
     ) -> None:
         # GIVEN a request-time credential supplied by the embedding service
         client = Mock()
-        token = "sushi-token"
+        token = "datarobot-token"
         with patch(
             f"{module_under_test}.get_feature_flag_enablement_with_existing_datarobot_client",
             new_callable=AsyncMock,
