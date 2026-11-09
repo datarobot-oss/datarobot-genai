@@ -265,7 +265,6 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
 
     async def _add_items_impl(self, items: list[MemoryItem], **kwargs: Any) -> None:
         add_kwargs = dict(kwargs)
-        output_format = add_kwargs.pop("output_format", "v1.1")
         configured_run_id = add_kwargs.pop("run_id", None)
         configured_tags = add_kwargs.pop("tags", None)
         configured_metadata = dict(add_kwargs.pop("metadata", None) or {})
@@ -287,7 +286,6 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
                 "user_id": user_id,
                 "tags": item.tags or configured_tags or [],
                 "metadata": metadata,
-                "output_format": output_format,
             }
             if run_id:
                 item_kwargs["run_id"] = run_id
@@ -327,12 +325,10 @@ class DRMem0Editor(MemoryEditor):  # type: ignore[misc]
             conditions.append({"metadata": metadata_filter})
 
         filters = kwargs.pop("filters", None) or {"AND": conditions}
-        output_format = kwargs.pop("output_format", "v1.1")
         result = await self._mem0.search(
             query,
             filters=filters,
             top_k=top_k,
-            output_format=output_format,
             **kwargs,
         )
 
