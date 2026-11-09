@@ -8,9 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drmcp`: Fixed tools that call DataRobot through the Python SDK sending the caller's external
   identity provider token (from `x-datarobot-external-access-token`) as `Token`, which DataRobot
   rejects for external tokens. They send it as `Authorization: Bearer`.
-- `drmcp`: Changed dynamic deployment tools to authenticate each call with the token on the
-  request. The token captured at registration is used only when the request has none. Before,
-  every call used the token captured at registration.
+- `drmcp`: Changed dynamic deployment tools to authenticate a call with the caller's external
+  identity provider token when the request uses one. Before, every call used the token captured
+  at registration. Calls made with any other token still do.
 
 ## 0.31.3 - 2026-10-30
 - `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set

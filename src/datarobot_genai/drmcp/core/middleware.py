@@ -51,6 +51,7 @@ from datarobot_genai.drmcputils.auth import extract_auth_context_from_headers
 from datarobot_genai.drmcputils.auth import set_auth_context
 from datarobot_genai.drmcputils.auth import set_request_headers
 from datarobot_genai.drmcputils.constants import AUTH_CTX_KEY
+from datarobot_genai.drmcputils.constants import EXTERNAL_ACCESS_TOKEN_HEADER
 
 from .routes_utils import prefix_mount_path
 
@@ -153,7 +154,7 @@ class OAuthJWTTokenHandlerMiddleware(BaseAuthZMiddleware):
     The parsed JWT token can be reused in the downstream validation (e.g., audience, tool scope).
     """
 
-    HTTP_HEADER_TO_VALIDATE = "x-datarobot-external-access-token"
+    HTTP_HEADER_TO_VALIDATE = EXTERNAL_ACCESS_TOKEN_HEADER
 
     @staticmethod
     def update_scope_with_authenticated_user(

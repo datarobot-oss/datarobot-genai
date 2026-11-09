@@ -84,17 +84,23 @@ def test_get_datarobot_tool_deployments_filters_tags_correctly(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("request_headers", "authorization"),
+    ("request_headers", "spec_header", "authorization"),
     [
-        ({"x-datarobot-external-access-token": "caller-token"}, "Bearer caller-token"),
-        ({}, "Bearer registration-token"),
+        ({"x-datarobot-external-access-token": "idp"}, "Authorization", "Bearer idp"),
+        ({"x-datarobot-external-access-token": "idp"}, "authorization", "Bearer idp"),
+        ({"x-datarobot-api-key": "caller-key"}, "Authorization", "Bearer registration-token"),
     ],
 )
 @patch("datarobot_genai.drmcpbase.dynamic_tools.external_tool.get_http_headers", return_value={})
 @patch("datarobot_genai.drmcp.core.dynamic_tools.register.register_tools")
 @patch("datarobot_genai.drmcp.core.dynamic_tools.deployment.register.create_deployment_tool_config")
-async def test_deployment_tool_authenticates_with_the_request_token(
-    mock_create_config, mock_register_tools, _mock_http_headers, request_headers, authorization
+async def test_deployment_tool_authenticates_with_the_callers_idp_token(
+    mock_create_config,
+    mock_register_tools,
+    _mock_http_headers,
+    request_headers,
+    spec_header,
+    authorization,
 ):
     # GIVEN a deployment tool whose config holds the token from registration
     mock_create_config.return_value = ExternalToolRegistrationConfig(
@@ -102,7 +108,7 @@ async def test_deployment_tool_authenticates_with_the_request_token(
         method="POST",
         base_url="https://pred.example.com/",
         endpoint="predict",
-        headers={"Authorization": "Bearer registration-token"},
+        headers={spec_header: "Bearer registration-token"},
         input_schema={
             "type": "object",
             "properties": {"query_params": {"type": "object", "properties": {}}},
@@ -119,6 +125,7 @@ async def test_deployment_tool_authenticates_with_the_request_token(
         mocked.post("https://pred.example.com/predict", payload={})
         await call_tool(input_model())
 
-    # THEN the request's token is sent, and the registration token only without one
+    # THEN the IdP token replaces the registration token, and other callers keep it
     (request,) = next(iter(mocked.requests.values()))
-    assert request.kwargs["headers"]["Authorization"] == authorization
+    sent = request.kwargs["headers"]
+    assert [v for k, v in sent.items() if k.lower() == "authorization"] == [authorization]

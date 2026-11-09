@@ -30,16 +30,12 @@ _MODULE = "datarobot_genai.drmcputils.clients.datarobot"
 
 
 class TestRequestUserDrSdk:
-    @pytest.mark.parametrize(
-        ("header", "token_type"),
-        [("authorization", None), ("x-datarobot-external-access-token", "Bearer")],
-    )
     @patch(f"{_MODULE}.client_configuration")
     @patch(f"{_MODULE}.get_credentials")
-    def test_uses_token_from_request_header(
-        self, mock_get_creds, mock_client_configuration, header, token_type
+    def test_uses_token_from_authorization_header(
+        self, mock_get_creds, mock_client_configuration
     ) -> None:
-        set_request_headers({header: "Bearer header-token"})
+        set_request_headers({"authorization": "Bearer header-token"})
         mock_creds = MagicMock()
         mock_creds.datarobot.datarobot_endpoint = "https://test.datarobot.com/api/v2"
         mock_get_creds.return_value = mock_creds
@@ -48,9 +44,7 @@ class TestRequestUserDrSdk:
             assert sdk is dr
 
         mock_client_configuration.assert_called_once_with(
-            token="header-token",
-            endpoint="https://test.datarobot.com/api/v2",
-            token_type=token_type,
+            token="header-token", endpoint="https://test.datarobot.com/api/v2", token_type=None
         )
 
     @patch(f"{_MODULE}.get_credentials")

@@ -146,10 +146,10 @@ def resolve_datarobot_token() -> str | None:
     return creds.datarobot.datarobot_api_token or None
 
 
-def datarobot_token_type(token: str) -> str | None:
-    """Return "Bearer" for the caller's IdP token, which DataRobot rejects as "Token"."""
+def is_external_access_token(token: str) -> bool:
+    """Tell whether ``token`` is the caller's IdP token from the request headers."""
     idp_token = _safe_request_headers().get(EXTERNAL_ACCESS_TOKEN_HEADER, "")
-    return "Bearer" if _parse_optional_bearer_token(idp_token) == token else None
+    return _parse_optional_bearer_token(idp_token) == token
 
 
 def resolve_secret(header_name: str, config_value: str) -> str | None:
