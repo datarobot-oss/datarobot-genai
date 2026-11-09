@@ -26,6 +26,7 @@ from datarobot_genai.drmcpbase.dynamic_tools.deployment.config import (
     assemble_deployment_tool_config,
 )
 from datarobot_genai.drmcpbase.dynamic_tools.external_tool import ExternalToolRegistrationConfig
+from datarobot_genai.drmcputils.auth import resolve_datarobot_token
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
 from datarobot_genai.drmcputils.deployment import build_deployment_auth_headers
 from datarobot_genai.drmcputils.deployment import get_deployment_base_url
@@ -53,3 +54,9 @@ def create_deployment_tool_config(
         auth_headers = build_deployment_auth_headers(deployment, api_client.token)
 
     return assemble_deployment_tool_config(deployment, metadata, base_url, auth_headers)
+
+
+def get_request_auth_headers(deployment: dr.Deployment) -> dict[str, str]:
+    """Build the deployment's auth headers from the request's token, if it has one."""
+    token = resolve_datarobot_token()
+    return build_deployment_auth_headers(deployment, token) if token else {}

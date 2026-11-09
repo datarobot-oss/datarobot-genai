@@ -65,7 +65,7 @@ class TestRequestUserDrClient:
             expected = mock_dr.client.get_client.return_value
             with request_user_dr_client() as client:
                 mock_cfg.assert_called_once_with(
-                    token="user-tok", endpoint="https://x.example/api/v2"
+                    token="user-tok", endpoint="https://x.example/api/v2", token_type=None
                 )
                 mock_cfg.return_value.__enter__.assert_called_once()
                 assert client is expected
@@ -97,7 +97,9 @@ class TestRequestUserDrSdk:
                 import datarobot as dr_mod
 
                 assert sdk is dr_mod
-            mock_cfg.assert_called_once_with(token="user-tok", endpoint="https://x.example/api/v2")
+            mock_cfg.assert_called_once_with(
+                token="user-tok", endpoint="https://x.example/api/v2", token_type=None
+            )
 
 
 class TestThreadSafeDataRobotClientRequestUserClient:
@@ -115,6 +117,6 @@ class TestThreadSafeDataRobotClientRequestUserClient:
             client_wrapper = ThreadSafeDataRobotClient()
             with client_wrapper.request_user_client() as client:
                 mock_cfg.assert_called_once_with(
-                    token="user-tok", endpoint="https://x.example/api/v2"
+                    token="user-tok", endpoint="https://x.example/api/v2", token_type=None
                 )
                 assert client is expected

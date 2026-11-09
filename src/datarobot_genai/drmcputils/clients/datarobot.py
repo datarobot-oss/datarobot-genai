@@ -32,6 +32,7 @@ from datarobot.client import client_configuration
 from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
 
+from datarobot_genai.drmcputils.auth import datarobot_token_type
 from datarobot_genai.drmcputils.auth import resolve_datarobot_token
 from datarobot_genai.drmcputils.credentials import get_credentials
 from datarobot_genai.drmcputils.exceptions import ToolError
@@ -81,7 +82,9 @@ def request_user_dr_client(*, headers_auth_only: bool = True) -> Iterator[RESTCl
     """
     token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
     endpoint = get_credentials().datarobot.datarobot_endpoint
-    with client_configuration(token=token, endpoint=endpoint):
+    with client_configuration(
+        token=token, endpoint=endpoint, token_type=datarobot_token_type(token)
+    ):
         # Avoid use-case context from trafaret affecting tool calls.
         DRContext.use_case = None
         yield cast(RESTClientObject, dr.client.get_client())
@@ -101,7 +104,9 @@ def request_user_dr_sdk(*, headers_auth_only: bool = True) -> Iterator[Any]:
     """
     token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
     endpoint = get_credentials().datarobot.datarobot_endpoint
-    with client_configuration(token=token, endpoint=endpoint):
+    with client_configuration(
+        token=token, endpoint=endpoint, token_type=datarobot_token_type(token)
+    ):
         DRContext.use_case = None
         yield dr
 
@@ -116,7 +121,9 @@ class ThreadSafeDataRobotClient:
     def request_user_client(self, *, headers_auth_only: bool = True) -> Iterator[RESTClientObject]:
         """Yield a scoped REST client; same semantics as :func:`request_user_dr_client`."""
         token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
-        with client_configuration(token=token, endpoint=self.endpoint):
+        with client_configuration(
+            token=token, endpoint=self.endpoint, token_type=datarobot_token_type(token)
+        ):
             # Avoid use-case context from trafaret affecting tool calls.
             DRContext.use_case = None
             yield cast(RESTClientObject, dr.client.get_client())

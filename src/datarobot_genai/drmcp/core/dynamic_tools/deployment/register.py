@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+from functools import partial
 
 import datarobot as dr
 from fastmcp.tools.tool import Tool
 
 from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import create_deployment_tool_config
+from datarobot_genai.drmcp.core.dynamic_tools.deployment.config import get_request_auth_headers
 from datarobot_genai.drmcp.core.dynamic_tools.register import register_external_tool
 from datarobot_genai.drmcp.core.exceptions import DynamicToolRegistrationError
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
@@ -65,7 +67,11 @@ async def register_tool_of_datarobot_deployment(
         config = create_deployment_tool_config(deployment)
 
         # Register using generic external tool registration with the config
-        tool = await register_external_tool(config, deployment_id=deployment.id)
+        tool = await register_external_tool(
+            config,
+            auth_headers=partial(get_request_auth_headers, deployment),
+            deployment_id=deployment.id,
+        )
 
         return tool
 
