@@ -24,6 +24,8 @@ _MESSAGES_CONTAINING_SECRET = [
     "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.c2lnbmF0dXJl",  # JWT
     "Bearer abcDEF123456789xyz",  # Authorization header value
     "basic dXNlcjpwYXNzd29yZA==",  # Basic auth value (case-insensitive)
+    "Token NjM4someToken-value_here",  # DataRobot SDK Authorization header value
+    'token of "NjM4someToken-value_here"',  # DataRobot SDK 401 message
     "password=Sup3rS3cret!",  # key=value assignment
     "api_key: 12345secretvalue",  # key: value assignment
     "client_secret=abc-def_123",  # key=value with - and _
@@ -44,6 +46,7 @@ _MESSAGES_WITHOUT_SECRETS = [
     "completion_token=300 prompt_token=12",  # singular *_token usage counters
     "Basic authentication disabled",  # prose after 'Basic', not a credential
     "Bearer integration tests passed",  # prose after 'Bearer'
+    "Token validation failed",  # prose after 'Token'
     "basic connectivity check passed",  # lowercase prose
     "api_key: missing",  # diagnostic word, not a credential value
     "authorization: denied",  # diagnostic word

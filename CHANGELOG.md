@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.4 - 2026-11-10
+- `drmcp`: The MCP server now starts when DataRobot rejects its API key (HTTP 401 or 403), for
+  example after the key's owner is deactivated. It logs one warning, skips dynamic tool and prompt
+  registration and the MCP lineage sync, and serves the tools registered so far. Before, the
+  server exited at startup.
+- `drmcputils`: Log redaction now covers `Token <key>` Authorization values and the DataRobot
+  SDK's authentication error, which quotes the API key.
+
 ## 0.31.3 - 2026-10-30
 - `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set
   one of the two new settings.

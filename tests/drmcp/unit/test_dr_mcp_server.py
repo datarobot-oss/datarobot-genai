@@ -18,6 +18,7 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+from datarobot.errors import ClientError
 from fastmcp import FastMCP
 
 from datarobot_genai.drmcp.core.clients import RequestHeadersMiddleware
@@ -237,6 +238,42 @@ class TestDataRobotMCPServer:
 
         # Server should still have been started.
         mock_asyncio.new_event_loop.assert_called_once()
+
+    @pytest.mark.parametrize(("status_code", "starts"), [(401, True), (403, True), (404, False)])
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.LineageManager")
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
+    @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
+    def test_run_when_startup_call_to_datarobot_fails(
+        self,
+        mock_asyncio: MagicMock,
+        mock_get_config: MagicMock,
+        mock_lineage_manager: MagicMock,
+        mock_mcp: MagicMock,
+        mock_config: MagicMock,
+        status_code: int,
+        starts: bool,
+    ) -> None:
+        # GIVEN a startup call to DataRobot that fails with the SDK's error
+        mock_get_config.return_value = mock_config
+        mock_lineage_manager.side_effect = ClientError(
+            'the provided token of "builder-key"', status_code
+        )
+        server = DataRobotMCPServer(mock_mcp, transport="stdio")
+
+        # WHEN the server runs
+        with patch.object(server._logger, "warning") as mock_warning:
+            if starts:
+                server.run()
+            else:
+                with pytest.raises(ClientError):
+                    server.run()
+
+        # THEN only a rejected key lets it start, with a warning that omits the key
+        assert mock_asyncio.new_event_loop.called is starts
+        if starts:
+            (message,) = mock_warning.call_args.args
+            assert f"HTTP {status_code}" in message
+            assert "builder-key" not in message
 
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
