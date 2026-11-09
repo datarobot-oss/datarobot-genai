@@ -111,7 +111,6 @@ async def test_add_items_forwards_per_session_user_id_from_memory_item() -> None
                 "run_id": "run-456",
                 "tags": ["preference"],
                 "metadata": {"thread_id": "thread-789"},
-                "output_format": "v1.1",
                 "agent_id": "agent-abc",
             },
         }

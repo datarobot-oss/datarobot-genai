@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.32.0 - 2026-11-09
+- *Breaking change*: `dragent`: move `mem0ai` to the 2.x line. The declared requirement goes from
+  `mem0ai>=1.0.8,<2.0.0` to `mem0ai>=2.0.18,<3.0.0` to meet the CVE floor for CVE-2026-115324,
+  CVE-2026-116575 and CVE-2026-7597, which no 1.x release fixes. Projects that pin `mem0ai` below
+  2.0 can no longer install `datarobot-genai[dragent]`.
+- mem0 2.x calls the `/v3/memories/` endpoints for `add` and `search`, where 1.x used `/v1/` and
+  `/v2/`. The DataRobot memory client points mem0 at the DataRobot memory service, so that service
+  has to serve the v3 routes.
+- `core/memory` and `dragent/plugins/datarobot_mem0_memory`: stop sending the legacy `version="v1"`
+  and `output_format="v1.1"` fields on `add` and `search`. mem0 2.x ignores them for routing and
+  forwards them as-is in the request body. An `output_format` set in `add_params` or
+  `search_params` is still passed through.
+- mem0 2.x requires `posthog>=7.14.0`, which moves several packages that capped `posthog` below 6:
+  `chromadb` 1.1.1 to 1.5.9, `crewai` 1.15.21 to 1.15.39 (it pins `chromadb~=1.5.9`), and
+  `deepeval` 3.9.6 to 4.3.3.
+- Add a minimum version for `dnspython`: `>=2.9.0`.
+- Add a minimum version for `langgraph`: `>=1.2.14`.
+- Add a minimum version for `oauthlib`: `>=4.0.1`.
+- Raise the minimum `authlib` version from `>=1.7.1` to `>=1.9.1`.
+- Raise the minimum `hydra-core` version from `>=1.3.7` to `>=1.3.8`.
+- Raise the minimum `joserfc` version from `>=1.6.8` to `>=1.7.6`.
+- Raise the minimum `langgraph-sdk` version from `>=0.4.4` to `>=0.4.6`.
+- Raise the minimum `mem0ai` version from `>=1.0.8` to `>=2.0.18`.
+- Raise the minimum `nltk` version from `>=3.10.3` to `>=3.10.4`.
+- Raise the minimum `pyasn1` version from `>=0.6.4` to `>=0.6.5`.
+- Raise the minimum `pypdf` version from `>=6.21.2` to `>=6.21.4`.
+
 ## 0.31.3 - 2026-10-30
 - `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set
   one of the two new settings.

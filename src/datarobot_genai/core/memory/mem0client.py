@@ -73,10 +73,7 @@ class Mem0Client(BaseMemoryClient):
 
         messages = [{"role": "user", "content": user_message}]
 
-        kwargs: dict[str, Any] = {
-            "version": "v1",
-            "output_format": "v1.1",
-        }
+        kwargs: dict[str, Any] = {}
         if attributes:
             kwargs["metadata"] = attributes
 
