@@ -239,23 +239,50 @@ class TestDataRobotMCPServer:
         # Server should still have been started.
         mock_asyncio.new_event_loop.assert_called_once()
 
-    @pytest.mark.parametrize(("status_code", "starts"), [(401, True), (403, True), (404, False)])
+    @pytest.mark.parametrize(
+        ("failing_step", "status_code", "starts"),
+        [
+            ("dynamic tool registration", 401, True),
+            ("dynamic prompt registration", 401, True),
+            ("MCP lineage sync", 401, True),
+            ("MCP lineage sync", 403, True),
+            ("MCP lineage sync", 404, False),
+        ],
+    )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.LineageManager")
+    @patch(
+        "datarobot_genai.drmcp.core.dr_mcp_server.register_prompts_from_datarobot_prompt_management",
+        new_callable=MagicMock,
+    )
+    @patch(
+        "datarobot_genai.drmcp.core.dr_mcp_server.register_tools_of_datarobot_deployments",
+        new_callable=MagicMock,
+    )
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.asyncio")
     def test_run_when_startup_call_to_datarobot_fails(
         self,
         mock_asyncio: MagicMock,
         mock_get_config: MagicMock,
+        mock_register_tools: MagicMock,
+        mock_register_prompts: MagicMock,
         mock_lineage_manager: MagicMock,
         mock_mcp: MagicMock,
         mock_config: MagicMock,
+        failing_step: str,
         status_code: int,
         starts: bool,
     ) -> None:
         # GIVEN a startup call to DataRobot that fails with the SDK's error
+        mock_config.mcp_server_register_dynamic_tools_on_startup = True
+        mock_config.mcp_server_register_dynamic_prompts_on_startup = True
         mock_get_config.return_value = mock_config
-        mock_lineage_manager.side_effect = ClientError(
+        steps = {
+            "dynamic tool registration": mock_register_tools,
+            "dynamic prompt registration": mock_register_prompts,
+            "MCP lineage sync": mock_lineage_manager,
+        }
+        steps[failing_step].side_effect = ClientError(
             'the provided token of "builder-key"', status_code
         )
         server = DataRobotMCPServer(mock_mcp, transport="stdio")
@@ -268,11 +295,12 @@ class TestDataRobotMCPServer:
                 with pytest.raises(ClientError):
                     server.run()
 
-        # THEN only a rejected key lets it start, with a warning that omits the key
+        # THEN only a 401 or 403 lets it start, skipping the steps after the failed one
         assert mock_asyncio.new_event_loop.called is starts
+        assert mock_lineage_manager.called is (failing_step == "MCP lineage sync")
         if starts:
             (message,) = mock_warning.call_args.args
-            assert f"HTTP {status_code}" in message
+            assert f"HTTP {status_code} during {failing_step}" in message
             assert "builder-key" not in message
 
     @patch("datarobot_genai.drmcp.core.dr_mcp_server.get_config")

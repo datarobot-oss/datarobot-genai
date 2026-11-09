@@ -33,16 +33,19 @@ SECRET_PATTERNS = [
     r"((?!\.)[\w\-_.]*[^.])(@\w+)(\.\w+(\.\w+)?[^.\W])",  # Email
     # JWTs — three base64url segments (DataRobot/Okta access + S2S tokens)
     r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
-    # Authorization header values: "Bearer <token>" / "Basic <base64>" / "Token <key>"
-    # (the DataRobot SDK's scheme).  The value must be credential-shaped — contain a
-    # digit/base64 symbol, or 10+ chars of mixed case — so prose like "Basic
-    # authentication disabled" survives.  The (?i:) scope keeps the shape checks
-    # case-sensitive.
-    r"(?i:\b(?:bearer|basic|token))\s+"
+    # Authorization header values: "Bearer <token>" / "Basic <base64>".  The value
+    # must be credential-shaped — contain a digit/base64 symbol, or 10+ chars of
+    # mixed case — so prose like "Basic authentication disabled" survives.  The
+    # (?i:) scope keeps the shape checks case-sensitive.
+    r"(?i:\b(?:bearer|basic))\s+"
     r"(?:(?=\S*[0-9+/=])[A-Za-z0-9._~+/=-]{6,}"
     r"|(?=\S*[a-z])(?=\S*[A-Z])[A-Za-z0-9._~+/=-]{10,})",
-    # The DataRobot SDK's 401 message quotes the key: provided token of "<key>"
-    r'(?i:\btoken of )"[^"]+"',
+    # The DataRobot SDK's header, "Authorization: Token <key>".  Anchored on the header
+    # name, because "token <value>" alone is common in LLM logs ("token limit=128000").
+    r"(?i:\bauthorization['\"]?\s*[:=]\s*['\"]?token)\s+\S+",
+    # The DataRobot SDK's 401 message quotes the key: provided token of "<key>".
+    # The quotes are escaped when the message is JSON-encoded.
+    r'(?i:\btoken of )\\?"[^"\\]+\\?"',
     # Assignments of secret-shaped keys, incl. prefixed forms: token=…, api_key: …,
     # DATAROBOT_API_TOKEN=…, client_secret=…, X-DataRobot-Authorization: …
     # The stem must END the key (``tokens=1500`` survives) and the value must be

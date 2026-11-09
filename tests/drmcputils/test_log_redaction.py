@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datarobot as dr
 import pytest
+import responses
+from datarobot.errors import ClientError
 
 from datarobot_genai.drmcputils.log_redaction import redact_secrets
 
@@ -24,8 +27,9 @@ _MESSAGES_CONTAINING_SECRET = [
     "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.c2lnbmF0dXJl",  # JWT
     "Bearer abcDEF123456789xyz",  # Authorization header value
     "basic dXNlcjpwYXNzd29yZA==",  # Basic auth value (case-insensitive)
-    "Token NjM4someToken-value_here",  # DataRobot SDK Authorization header value
+    "Authorization: Token NjM4someToken-value_here",  # DataRobot SDK Authorization header
     'token of "NjM4someToken-value_here"',  # DataRobot SDK 401 message
+    'token of \\"NjM4someToken-value_here\\"',  # the same, JSON-encoded
     "password=Sup3rS3cret!",  # key=value assignment
     "api_key: 12345secretvalue",  # key: value assignment
     "client_secret=abc-def_123",  # key=value with - and _
@@ -46,7 +50,7 @@ _MESSAGES_WITHOUT_SECRETS = [
     "completion_token=300 prompt_token=12",  # singular *_token usage counters
     "Basic authentication disabled",  # prose after 'Basic', not a credential
     "Bearer integration tests passed",  # prose after 'Bearer'
-    "Token validation failed",  # prose after 'Token'
+    "Context token limit=128000 exceeded",  # usage text after 'token'
     "basic connectivity check passed",  # lowercase prose
     "api_key: missing",  # diagnostic word, not a credential value
     "authorization: denied",  # diagnostic word
@@ -77,3 +81,16 @@ def test_redact_secrets_redacts_secret_within_context() -> None:
     assert "eyJa.eyJb.sig" not in redacted
     assert "[REDACTED]" in redacted
     assert "6513f86cd799439011abcdef" in redacted
+
+
+@responses.activate
+def test_redact_secrets_redacts_key_in_sdk_authentication_error() -> None:
+    # GIVEN the error the DataRobot SDK raises when the server rejects the key
+    key = "NjM4someToken-value_here"
+    responses.get("https://dr.example.com/api/v2/version/", status=401)
+    with pytest.raises(ClientError) as error:
+        dr.Client(token=key, endpoint="https://dr.example.com/api/v2")
+
+    # THEN the SDK's message quotes the key, and redaction removes it
+    assert key in str(error.value)
+    assert key not in redact_secrets(str(error.value))
