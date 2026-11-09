@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - mem0 2.x calls the `/v3/memories/` endpoints for `add` and `search`, where 1.x used `/v1/` and
   `/v2/`. The DataRobot memory client points mem0 at the DataRobot memory service, so that service
   has to serve the v3 routes.
+- `core/memory` and `dragent/plugins/datarobot_mem0_memory`: stop sending the legacy `version="v1"`
+  and `output_format="v1.1"` fields on `add` and `search`. mem0 2.x ignores them for routing and
+  forwards them as-is in the request body. An `output_format` set in `add_params` or
+  `search_params` is still passed through.
 - mem0 2.x requires `posthog>=7.14.0`, which moves several packages that capped `posthog` below 6:
   `chromadb` 1.1.1 to 1.5.9, `crewai` 1.15.21 to 1.15.39 (it pins `chromadb~=1.5.9`), and
   `deepeval` 3.9.6 to 4.3.3.
