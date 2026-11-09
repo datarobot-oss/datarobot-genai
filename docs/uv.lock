@@ -157,7 +157,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.32.0"
+version = "0.32.1"
 source = { editable = "../" }
 
 [package.metadata]
@@ -249,7 +249,7 @@ requires-dist = [
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
     { name = "mcpadapt", marker = "extra == 'crewai'", specifier = ">=0.1.9" },
-    { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.8,<2.0.0" },
+    { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=2.0.18,<3.0.0" },
     { name = "nemo-evaluator-launcher", marker = "extra == 'eval'" },
     { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.9.0" },
     { name = "nvidia-nat-crewai", marker = "extra == 'crewai'", specifier = "==1.9.0" },
@@ -334,17 +334,17 @@ requires-dist = [
     { name = "pydantic-settings", marker = "extra == 'drmcpbase'", specifier = ">=2.14.2,<3.0.0" },
     { name = "pydantic-settings", marker = "extra == 'drmcputils'", specifier = ">=2.14.2,<3.0.0" },
     { name = "pydantic-settings", marker = "extra == 'drtools'", specifier = ">=2.14.2,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'core'", specifier = ">=2.15.0,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'crewai'", specifier = ">=2.15.0,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'dragent'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", marker = "extra == 'drmcp'", specifier = ">=2.15.0,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'langgraph'", specifier = ">=2.15.0,<3.0.0" },
-    { name = "pyjwt", marker = "extra == 'llamaindex'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'auth'", specifier = ">=2.15.0,<3.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'core'", specifier = ">=2.15.0,<3.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'crewai'", specifier = ">=2.15.0,<3.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'dragent'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drmcp'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drmcpbase'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drmcputils'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drtools'", specifier = ">=2.15.0,<3.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'langgraph'", specifier = ">=2.15.0,<3.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'llamaindex'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.21.2,<7.0.0" },
     { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.21.2,<7.0.0" },
     { name = "python-dateutil", marker = "extra == 'drmcp'", specifier = ">=2.9.0,<3.0.0" },
