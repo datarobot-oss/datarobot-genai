@@ -149,6 +149,18 @@ def mcp_xaa_exchange() -> Iterator[AsyncMock]:
         yield exchange
 
 
+@pytest.fixture
+def mcp_xaa_config() -> MCPConfig:
+    """Return the config of an MCP deployment with MCP_USE_XAA on."""
+    return MCPConfig(
+        mcp_deployment_id="abc123def456789012345678",
+        datarobot_endpoint="https://app.datarobot.com/api/v2",
+        datarobot_api_token="test-api-key",
+        forwarded_headers={"x-datarobot-api-key": "caller-key"},
+        mcp_use_xaa=True,
+    )
+
+
 @pytest.fixture(autouse=True, scope="function")
 def disable_env_file(monkeypatch):
     """Disable loading of .env file for MCPConfig and related settings classes.

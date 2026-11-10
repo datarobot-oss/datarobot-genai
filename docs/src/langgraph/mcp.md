@@ -39,9 +39,20 @@ By default the agent sends its DataRobot API token to an MCP server set with `MC
 | `MCP_USE_XAA` | `true` turns the exchange on. The default is `false`. |
 | `IDP_AGENT_ID`, `IDP_AGENT_PRIVATE_KEY_JWK` | The agent's Okta identity. Required when `MCP_USE_XAA` is `true`. |
 | `MCP_XAA_TRUSTED_ISSUER`, `MCP_XAA_EXCHANGE_AUDIENCE`, `MCP_XAA_TOKEN_URL` | The MCP server's XAA parameters. Set all three, or none. |
-| `MCP_XAA_TOKEN_AUDIENCE`, `MCP_XAA_SCOPES` | Optional. `MCP_XAA_SCOPES` is a comma-separated list of the scopes to request. Include the scopes that the server's tools require. |
+| `MCP_XAA_SCOPES` | A comma-separated list of the scopes to request. When it is unset, the agent requests no scopes. |
+| `MCP_XAA_TOKEN_AUDIENCE` | Optional. Sent to Okta as `resource`. |
 
-When no `MCP_XAA_*` setting is set, the agent reads the parameters from the MCP server's `/.well-known/oauth-protected-resource` document. On DataRobot 11.14 and older, the agent cannot read that document from an MCP server deployed as a custom model, so set the `MCP_XAA_*` settings. Use the values of the MCP server's own `MCP_XAA_*` settings.
+When no `MCP_XAA_*` setting is set, the agent reads the parameters from the MCP server's `/.well-known/oauth-protected-resource` document, and requests the scopes that document lists as `scopes_supported`. On DataRobot 11.14 and older, the agent cannot read that document from an MCP server deployed as a custom model, so set the `MCP_XAA_*` settings. Use the values of the MCP server's own `MCP_XAA_*` settings.
+
+Set `MCP_XAA_SCOPES` to the same list the server publishes as `scopes_supported`: the server's own `MCP_XAA_SCOPES`, plus any scopes its tools require. A DataRobot MCP server behind Okta typically needs `dr.impersonation`:
+
+```sh
+MCP_USE_XAA=true
+MCP_XAA_TRUSTED_ISSUER=https://<org>.okta.com
+MCP_XAA_EXCHANGE_AUDIENCE=https://<org>.okta.com/oauth2/<authorization server ID>
+MCP_XAA_TOKEN_URL=https://<org>.okta.com/oauth2/<authorization server ID>/v1/token
+MCP_XAA_SCOPES=dr.impersonation
+```
 
 Before you turn it on:
 

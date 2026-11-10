@@ -23,16 +23,6 @@ from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.langgraph.mcp import mcp_tools_context
 
 
-def _xaa_config() -> MCPConfig:
-    return MCPConfig(
-        mcp_deployment_id="abc123def456789012345678",
-        datarobot_endpoint="https://app.datarobot.com/api/v2",
-        datarobot_api_token="test-api-key",
-        forwarded_headers={"x-datarobot-api-key": "caller-key"},
-        mcp_use_xaa=True,
-    )
-
-
 @pytest.fixture
 def mock_load_mcp_tools():
     # ``mcp_tools_context`` loads tools via ``load_mcp_tools(session=None, connection=...)``
@@ -234,10 +224,12 @@ class TestMCPToolsContext:
             assert connection_config["transport"] == "sse"
 
     @pytest.mark.usefixtures("mcp_xaa_exchange")
-    async def test_mcp_use_xaa_sends_only_the_exchanged_token(self, setup_session_and_tools):
+    async def test_mcp_use_xaa_sends_only_the_exchanged_token(
+        self, setup_session_and_tools, mcp_xaa_config
+    ):
         # GIVEN MCP_USE_XAA on and an exchange that works
         # WHEN the tools are loaded
-        async with mcp_tools_context(_xaa_config()):
+        async with mcp_tools_context(mcp_xaa_config):
             pass
 
         # THEN the connection carries the exchanged token and nothing else
@@ -246,14 +238,14 @@ class TestMCPToolsContext:
         }
 
     async def test_mcp_use_xaa_failed_exchange_raises(
-        self, setup_session_and_tools, mcp_xaa_exchange
+        self, setup_session_and_tools, mcp_xaa_exchange, mcp_xaa_config
     ):
         # GIVEN MCP_USE_XAA on and an exchange that fails
         mcp_xaa_exchange.side_effect = RuntimeError("Okta refused")
 
         # WHEN / THEN loading the tools raises instead of running without them
         with pytest.raises(RuntimeError, match="Okta refused"):
-            async with mcp_tools_context(_xaa_config()):
+            async with mcp_tools_context(mcp_xaa_config):
                 pass
         setup_session_and_tools["load_tools"].assert_not_called()
 

@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     is set, the agent reads them from the MCP server's `/.well-known/oauth-protected-resource`
     document. On DataRobot 11.14 and older, set them: the agent cannot read that document from an
     MCP server deployed as a custom model.
+  - With the settings, the agent requests only the scopes in `MCP_XAA_SCOPES`, and none when it is
+    unset. A DataRobot MCP server behind Okta typically needs `MCP_XAA_SCOPES=dr.impersonation`.
   - `MCP_WORKLOAD_ID` is not covered yet. It keeps sending the API token and logs a warning.
     `EXTERNAL_MCP_URL` is not affected.
   - `MCPConfig.authenticated_server_config()` returns the server config with the exchanged token.
