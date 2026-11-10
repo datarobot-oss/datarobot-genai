@@ -180,8 +180,12 @@ async def datarobot_mcp_client_function_group(
         auth_provider = await _builder.get_auth_provider(config.server.auth_provider)
 
     # With MCP_USE_XAA a failed token exchange fails the request. A failed connection
-    # below only drops the tools.
-    if isinstance(auth_provider, DataRobotMCPAuthProvider) and MCPConfig().uses_xaa:
+    # below only drops the tools. The sse client does not use the auth provider.
+    if (
+        config.server.transport == "streamable-http"
+        and isinstance(auth_provider, DataRobotMCPAuthProvider)
+        and MCPConfig().uses_xaa
+    ):
         await auth_provider.authenticate()
 
     # Build the appropriate client

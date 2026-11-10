@@ -11,6 +11,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+from unittest.mock import AsyncMock
+from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
@@ -19,11 +21,13 @@ from nat.authentication.api_key.api_key_auth_provider import APIKeyAuthProvider
 from nat.builder.workflow_builder import WorkflowBuilder
 from pydantic import SecretStr
 
+from datarobot_genai.dragent import mcp_xaa
 from datarobot_genai.dragent.plugins.datarobot_auth_provider import (
     DataRobotAPIKeyAuthProviderConfig,
 )
 from datarobot_genai.dragent.plugins.datarobot_auth_provider import DataRobotMCPAuthProvider
 from datarobot_genai.dragent.plugins.datarobot_auth_provider import DataRobotMCPAuthProviderConfig
+from tests.dragent.helpers import make_jwt
 
 
 async def test_datarobot_auth_provider():
@@ -82,42 +86,65 @@ async def test_datarobot_mcp_auth_provider():
         assert isinstance(auth_provider, DataRobotMCPAuthProvider)
 
 
+MCP_DEPLOYMENT_ENV = {
+    "MCP_DEPLOYMENT_ID": "c" * 24,
+    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+    "DATAROBOT_API_TOKEN": "tok",
+}
+XAA_ENV = {
+    "MCP_USE_XAA": "true",
+    "IDP_AGENT_ID": "wlp-agent",
+    "IDP_AGENT_PRIVATE_KEY_JWK": "{}",
+    "MCP_XAA_TRUSTED_ISSUER": "https://org.okta.com",
+    "MCP_XAA_EXCHANGE_AUDIENCE": "https://org.okta.com/oauth2/aus1",
+    "MCP_XAA_TOKEN_URL": "https://org.okta.com/oauth2/aus1/v1/token",
+    "MCP_XAA_SCOPES": "dr.impersonation",
+}
+
+
+CALLER_TOKEN = make_jwt(sub="alice")
+
+
 @pytest.mark.parametrize(
-    ("use_xaa", "expected_headers"),
+    ("xaa_env", "expected_headers", "exchanged"),
     [
         pytest.param(
-            "false",
-            {"x-datarobot-api-key": "caller-key", "Authorization": "Bearer tok", "X-Static": "v"},
+            {},
+            {
+                "x-datarobot-api-key": "caller-key",
+                "x-datarobot-external-access-token": CALLER_TOKEN,
+                "Authorization": "Bearer tok",
+                "X-Static": "v",
+            },
+            [],
             id="off",
         ),
-        pytest.param("true", {"Authorization": "Bearer xaa-token"}, id="on"),
+        pytest.param(XAA_ENV, {"Authorization": "Bearer xaa-token"}, [CALLER_TOKEN], id="on"),
     ],
 )
-@pytest.mark.usefixtures("mcp_xaa_exchange")
-async def test_datarobot_mcp_auth_provider_headers(use_xaa, expected_headers):
-    # GIVEN an MCP deployment, a header forwarded from the caller and one set on the provider
+async def test_datarobot_mcp_auth_provider_headers(xaa_env, expected_headers, exchanged):
+    # GIVEN an MCP deployment, a header set on the provider, and a request that carries the
+    # caller's API key and Okta token
     set_authorization_context({})
-    env = {
-        "MCP_DEPLOYMENT_ID": "c" * 24,
-        "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
-        "DATAROBOT_API_TOKEN": "tok",
-        "MCP_USE_XAA": use_xaa,
-    }
-    module = "datarobot_genai.dragent.plugins.datarobot_auth_provider"
+    mcp_xaa.clear_caches()
+    exchange = Mock(exchange_token=AsyncMock(return_value="xaa-token"))
     with (
-        patch.dict(os.environ, env, clear=True),
-        patch(
-            f"{module}.extract_datarobot_headers_from_context",
-            return_value={"x-datarobot-api-key": "caller-key"},
-        ),
+        patch.dict(os.environ, {**MCP_DEPLOYMENT_ENV, **xaa_env}, clear=True),
+        patch("datarobot_genai.dragent.context.Context") as context,
+        patch.object(mcp_xaa, "get_token_exchange", return_value=exchange),
     ):
-        provider = DataRobotMCPAuthProvider(
-            DataRobotMCPAuthProviderConfig(headers={"X-Static": "v"})
-        )
+        context.get.return_value.metadata.headers = {
+            "x-datarobot-api-key": "caller-key",
+            "x-datarobot-external-access-token": CALLER_TOKEN,
+        }
+        config = DataRobotMCPAuthProviderConfig(headers={"X-Static": "v"})
 
-        # WHEN the provider authenticates a request
-        result = await provider.authenticate()
+        # WHEN the provider authenticates the request
+        result = await DataRobotMCPAuthProvider(config).authenticate()
+    mcp_xaa.clear_caches()
 
-    # THEN MCP_USE_XAA off sends the same headers as before, and on only the exchanged token
+    # THEN MCP_USE_XAA off sends the same headers as before, and on only the token
+    # exchanged from the caller's
     headers = {cred.name: cred.value.get_secret_value() for cred in result.credentials}
     assert headers == expected_headers
+    assert [call.args[1] for call in exchange.exchange_token.await_args_list] == exchanged

@@ -28,23 +28,22 @@ MCP server URL and credentials come from the **deployment / environment**, not f
 
 ## Send the caller's Okta token to the MCP server
 
-By default the agent sends its DataRobot API token to an MCP server set with `MCP_DEPLOYMENT_ID` or `MCP_SERVER_PORT`. Set `MCP_USE_XAA=true` to send the caller's Okta token instead:
+By default the agent sends its DataRobot API token to an MCP server set with `MCP_DEPLOYMENT_ID`. Set `MCP_USE_XAA=true` to send the caller's Okta token instead:
 
 - The agent takes the caller's access token from the `x-datarobot-external-access-token` request header and exchanges it with Okta cross-application access (XAA).
-- It sends only the exchanged token, as `Authorization: Bearer`. It sends no DataRobot API token and forwards no request headers.
+- It sends only the exchanged token, as `Authorization: Bearer`. It sends no DataRobot API token, no authorization context and no other request header.
 - It never falls back to the API token. If the exchange fails, the request fails.
 
 | Setting | Description |
 |---|---|
 | `MCP_USE_XAA` | `true` turns the exchange on. The default is `false`. |
 | `IDP_AGENT_ID`, `IDP_AGENT_PRIVATE_KEY_JWK` | The agent's Okta identity. Required when `MCP_USE_XAA` is `true`. |
-| `MCP_XAA_TRUSTED_ISSUER`, `MCP_XAA_EXCHANGE_AUDIENCE`, `MCP_XAA_TOKEN_URL` | The MCP server's XAA parameters. Set all three, or none. |
-| `MCP_XAA_SCOPES` | A comma-separated list of the scopes to request. When it is unset, the agent requests no scopes. |
-| `MCP_XAA_TOKEN_AUDIENCE` | Optional. Sent to Okta as `resource`. |
+| `MCP_XAA_TRUSTED_ISSUER`, `MCP_XAA_EXCHANGE_AUDIENCE`, `MCP_XAA_TOKEN_URL`, `MCP_XAA_SCOPES` | The MCP server's XAA parameters. Set all four, or none. `MCP_XAA_SCOPES` is a comma-separated list of the scopes to request. |
+| `MCP_XAA_TOKEN_AUDIENCE` | Optional, and used only with the four above. Sent to Okta as `resource`. |
 
-When no `MCP_XAA_*` setting is set, the agent reads the parameters from the MCP server's `/.well-known/oauth-protected-resource` document, and requests the scopes that document lists as `scopes_supported`. On DataRobot 11.14 and older, the agent cannot read that document from an MCP server deployed as a custom model, so set the `MCP_XAA_*` settings. Use the values of the MCP server's own `MCP_XAA_*` settings.
+When no `MCP_XAA_*` setting is set, the agent reads the parameters from the MCP server's `/.well-known/oauth-protected-resource` document, and requests the scopes that document lists as `scopes_supported`. On DataRobot 11.14 and older, the agent cannot read that document from an MCP server deployed as a custom model, so set the `MCP_XAA_*` settings.
 
-Set `MCP_XAA_SCOPES` to the same list the server publishes as `scopes_supported`: the server's own `MCP_XAA_SCOPES`, plus any scopes its tools require. A DataRobot MCP server behind Okta typically needs `dr.impersonation`:
+The first three take the values of the MCP server's own `MCP_XAA_*` settings. Set `MCP_XAA_SCOPES` to the list the server publishes as `scopes_supported`: the server's own `MCP_XAA_SCOPES`, plus any scopes its tools require. A DataRobot MCP server behind Okta typically needs `dr.impersonation`:
 
 ```sh
 MCP_USE_XAA=true
@@ -57,9 +56,12 @@ MCP_XAA_SCOPES=dr.impersonation
 Before you turn it on:
 
 - A request without the caller's Okta token fails with an error. That includes chats in the playground and calls made with a DataRobot API key. The same happens when the token is expired or Okta refuses the exchange.
-- `MCP_WORKLOAD_ID` is not covered yet. The agent logs a warning and sends the DataRobot API token to a workload MCP server, as before.
-- `EXTERNAL_MCP_URL` is not affected. The agent sends only `EXTERNAL_MCP_HEADERS` to it.
-- The agent gets the token once per request and uses it for the whole run. A token taken from the cache has at least five minutes left.
+- The MCP server gets no authorization context and no forwarded token headers. Tools on the server that need them, such as the Jira, Confluence, Google Drive and Microsoft Graph tools, do not get them for these requests.
+- Only `MCP_DEPLOYMENT_ID` is covered. With `MCP_WORKLOAD_ID` or `MCP_SERVER_PORT` the agent still sends the DataRobot API token, and logs a warning once. `EXTERNAL_MCP_URL` is not affected: the agent sends only `EXTERNAL_MCP_HEADERS` to it.
+- When the agent reads the parameters from the MCP server, it trusts that server to name the Okta endpoints the caller's token is sent to, and a request also fails when the server cannot be reached. Set the `MCP_XAA_*` settings to avoid both.
+- The agent gets the token once per request and uses it for the whole run. It reuses a cached token only while the token has five minutes left, or half its lifetime if that is shorter. A run that outlives the token loses its MCP tools for the rest of the run.
+- With the NAT `datarobot_mcp_client` function group, the exchange is checked when the group is built for a user. If it fails on a later request, the MCP call fails and the agent gets a tool error. The request itself does not fail.
+- The token endpoint authentication method is always `private_key_jwt`.
 - The agent needs the `dragent` extra of `datarobot-genai`.
 - Code that reads `MCPConfig.server_config` directly gets no credentials. Use `await mcp_config.authenticated_server_config()`, as `mcp_tools_context` does.
 

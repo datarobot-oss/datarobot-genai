@@ -178,11 +178,13 @@ async def get_xaa_params_from_mcp_auth_server_metadata(
     return await fetch_xaa_params(get_mcp_auth_server_metadata_url(config))
 
 
-async def fetch_xaa_params(mcp_auth_server_metadata_url: str) -> _CrossAppFlowParams:
+async def fetch_xaa_params(
+    mcp_auth_server_metadata_url: str, http_client: httpx.AsyncClient | None = None
+) -> _CrossAppFlowParams:
     """Return the XAA parameters published at ``mcp_auth_server_metadata_url``."""
-    async with get_retriable_async_http_client() as http_client:
+    async with http_client or get_retriable_async_http_client() as client:
         try:
-            resp = await http_client.get(mcp_auth_server_metadata_url)
+            resp = await client.get(mcp_auth_server_metadata_url)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise RuntimeError(

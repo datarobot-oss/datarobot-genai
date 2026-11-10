@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import json
 import logging
 import re
@@ -42,6 +43,16 @@ _WORKLOAD_RUNNING_STATUS = "running"
 def clear_workload_endpoint_cache() -> None:
     """Forget every cached workload endpoint (used by tests)."""
     _WORKLOAD_ENDPOINT_CACHE.clear()
+
+
+@functools.cache
+def _warn_mcp_use_xaa_not_applied(kind: str | None) -> None:
+    """Warn once per kind: MCPConfig is built per request, and this would repeat."""
+    logger.warning(
+        "MCP_USE_XAA applies only to MCP_DEPLOYMENT_ID. "
+        "The %s MCP server still gets the DataRobot API token.",
+        kind,
+    )
 
 
 def lookup_workload_endpoint(
@@ -251,7 +262,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     @property
     def uses_xaa(self) -> bool:
         """True when the connection sends the caller's exchanged Okta token, not the API token."""
-        return self.mcp_use_xaa and self._config_kind() in ("deployment", "local")
+        return self.mcp_use_xaa and self._config_kind() == "deployment"
 
     async def authenticated_server_config(self) -> dict[str, Any] | None:
         """Return ``server_config``, with the caller's exchanged Okta token when XAA is on."""
@@ -262,7 +273,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         # Imported here: the exchange needs the dragent extra, MCPConfig does not.
         try:
             from datarobot_genai.dragent.mcp_xaa import exchange_caller_token
-        except ImportError as exc:
+        except ModuleNotFoundError as exc:
             raise RuntimeError(
                 "MCP_USE_XAA needs the dragent extra. Install datarobot-genai[dragent]."
             ) from exc
@@ -312,6 +323,8 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
         if self.uses_xaa:
             # The exchanged token is the only header sent: authenticated_server_config adds it.
             return headers
+        if self.mcp_use_xaa:
+            _warn_mcp_use_xaa_not_applied(self._config_kind())
         if self.forwarded_headers:
             headers.update(self.forwarded_headers)
         headers.update(self._authorization_bearer_header())
@@ -370,11 +383,6 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 # Nowhere to connect: better no MCP server than a guessed URL.
                 return None
             headers = self._build_authenticated_headers()
-            if self.mcp_use_xaa:
-                logger.warning(
-                    "MCP_USE_XAA does not apply to MCP_WORKLOAD_ID yet. "
-                    "The workload MCP still gets the DataRobot API token."
-                )
 
             logger.info(f"Using DataRobot workload MCP: {url}")
 

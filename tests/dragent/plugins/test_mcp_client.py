@@ -104,19 +104,33 @@ async def test_datarobot_mcp_client():
             assert "datarobot_mcp_tools__b" in all_functions
 
 
+XAA_ENV = {
+    "MCP_DEPLOYMENT_ID": "c" * 24,
+    "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+    "MCP_USE_XAA": "true",
+}
+MCP_CLIENT = "datarobot_genai.dragent.plugins.datarobot_mcp_client.DataRobotMCPStreamableHTTPClient"
+
+
+async def test_datarobot_mcp_client_exchanges_before_it_connects(mcp_xaa_exchange):
+    # GIVEN MCP_USE_XAA on and an exchange that works
+    fake_client = _FakeMCPClient(tools={"a": _FakeTool("a")})
+    with patch.dict(os.environ, XAA_ENV, clear=True), patch(MCP_CLIENT, return_value=fake_client):
+        async with WorkflowBuilder() as builder:
+            await builder.add_auth_provider("datarobot_mcp_auth", DataRobotMCPAuthProviderConfig())
+
+            # WHEN the group is built
+            await builder.add_function_group("datarobot_mcp_tools", DataRobotMCPClientConfig())
+            function_group = await builder.get_function_group("datarobot_mcp_tools")
+
+            # THEN the token is exchanged once and the tools are loaded
+            mcp_xaa_exchange.assert_awaited_once()
+            assert "datarobot_mcp_tools__a" in await function_group.get_all_functions()
+
+
 async def test_datarobot_mcp_client_failed_xaa_exchange_raises():
     # GIVEN MCP_USE_XAA on and a request without the caller's Okta token
-    env = {
-        "MCP_DEPLOYMENT_ID": "c" * 24,
-        "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
-        "MCP_USE_XAA": "true",
-    }
-    with (
-        patch.dict(os.environ, env, clear=True),
-        patch(
-            "datarobot_genai.dragent.plugins.datarobot_mcp_client.DataRobotMCPStreamableHTTPClient"
-        ) as mock_client,
-    ):
+    with patch.dict(os.environ, XAA_ENV, clear=True), patch(MCP_CLIENT) as mock_client:
         async with WorkflowBuilder() as builder:
             await builder.add_auth_provider("datarobot_mcp_auth", DataRobotMCPAuthProviderConfig())
 

@@ -17,11 +17,17 @@
 from __future__ import annotations
 
 import functools
+import threading
 from typing import TYPE_CHECKING
+from typing import Any
 
+import jwt
+from cachetools import TLRUCache
 from cachetools import TTLCache
 
 from datarobot_genai.dragent.cross_app_access_config import TokenEndpointAuthMethod
+from datarobot_genai.dragent.http_client import AsyncClientConfig
+from datarobot_genai.dragent.http_client import get_retriable_async_http_client
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.inbound_token import find_idp_token
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
@@ -43,9 +49,26 @@ if TYPE_CHECKING:
 DISCOVERY_TTL_SECONDS = 300
 #: The token is sent for a whole agent run, so a cached one must have this long left.
 TOKEN_REFRESH_MARGIN_SECONDS = 300
+#: Discovery runs inside a request, so it gets one retry and a short timeout.
+_DISCOVERY_CLIENT_CONFIG = AsyncClientConfig(max_retries=1, timeout_in_seconds=10.0)
+
+# Inline runs use one event loop per thread, so threads share both caches.
+_LOCK = threading.RLock()
 _DISCOVERED_PARAMS: TTLCache[str, _CrossAppFlowParams] = TTLCache(
     maxsize=32, ttl=DISCOVERY_TTL_SECONDS
 )
+
+
+class _TokenCache(TLRUCache):
+    """Token cache that threads can share."""
+
+    def __getitem__(self, key: Any) -> Any:
+        with _LOCK:
+            return super().__getitem__(key)
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        with _LOCK:
+            super().__setitem__(key, value)
 
 
 def clear_caches() -> None:
@@ -57,15 +80,20 @@ def clear_caches() -> None:
 @functools.lru_cache(maxsize=1)
 def _token_exchange() -> XAATokenExchange:
     """Return the one exchange of this process, so requests share its token cache."""
-    config = OAuth2CrossApplicationAccessAuthProviderConfig(
-        cache_refresh_margin_in_second=TOKEN_REFRESH_MARGIN_SECONDS
-    )
+    config = OAuth2CrossApplicationAccessAuthProviderConfig()
     if not (config.principal_id and config.private_jwk):
         raise RuntimeError(
             "MCP_USE_XAA needs the agent's Okta identity. "
             "Set IDP_AGENT_ID and IDP_AGENT_PRIVATE_KEY_JWK."
         )
-    return get_token_exchange(config, XAATokenExchangeCacheManager(config).get_tlru_cache())
+    cache_manager = XAATokenExchangeCacheManager(config)
+
+    def expires_at(_key: str, token: str, now: float) -> float:
+        # A token that lives under twice the margin is reused for half its life.
+        ttl = cache_manager.get_ttl_or_fallback(token)
+        return now + ttl - min(TOKEN_REFRESH_MARGIN_SECONDS, ttl / 2)
+
+    return get_token_exchange(config, _TokenCache(config.cache_max_size, ttu=expires_at))
 
 
 def _xaa_params_from_settings(mcp_config: MCPConfig) -> _CrossAppFlowParams | None:
@@ -77,16 +105,18 @@ def _xaa_params_from_settings(mcp_config: MCPConfig) -> _CrossAppFlowParams | No
     scopes = [scope.strip() for scope in (mcp_config.mcp_xaa_scopes or "").split(",")]
     scopes = [scope for scope in scopes if scope]
 
-    if not any([trusted_issuer, exchange_audience, token_url, token_audience, scopes]):
+    # The same four the MCP server needs before it publishes its XAA parameters.
+    required = {
+        "MCP_XAA_TRUSTED_ISSUER": trusted_issuer,
+        "MCP_XAA_EXCHANGE_AUDIENCE": exchange_audience,
+        "MCP_XAA_TOKEN_URL": token_url,
+        "MCP_XAA_SCOPES": scopes,
+    }
+    if not any([*required.values(), token_audience]):
         return None
-    if not (trusted_issuer and exchange_audience and token_url):
-        required = {
-            "MCP_XAA_TRUSTED_ISSUER": trusted_issuer,
-            "MCP_XAA_EXCHANGE_AUDIENCE": exchange_audience,
-            "MCP_XAA_TOKEN_URL": token_url,
-        }
-        missing = ", ".join(name for name, value in required.items() if not value)
-        raise RuntimeError(f"Incomplete MCP_XAA_* settings. Missing: {missing}.")
+    if missing := [name for name, value in required.items() if not value]:
+        raise RuntimeError(f"Incomplete MCP_XAA_* settings. Missing: {', '.join(missing)}.")
+    assert trusted_issuer and exchange_audience and token_url  # no name is missing
     return _CrossAppFlowParams(
         trusted_issuer=trusted_issuer,
         exchange_audience=exchange_audience,
@@ -103,15 +133,20 @@ async def _xaa_params(mcp_config: MCPConfig, mcp_server_url: str) -> _CrossAppFl
         return params
 
     metadata_url = build_mcp_auth_server_metadata_url(mcp_server_url)
-    if (params := _DISCOVERED_PARAMS.get(metadata_url)) is None:
+    with _LOCK:
+        params = _DISCOVERED_PARAMS.get(metadata_url)
+    if params is None:
+        http_client = get_retriable_async_http_client(async_client_config=_DISCOVERY_CLIENT_CONFIG)
         try:
-            params = await fetch_xaa_params(metadata_url)
-        except RuntimeError as exc:
+            params = await fetch_xaa_params(metadata_url, http_client)
+        except (RuntimeError, ValueError, KeyError) as exc:
             raise RuntimeError(
-                f"{exc} Set the MCP_XAA_* settings on the agent if the MCP server cannot "
-                "publish its XAA parameters."
+                f"MCP_USE_XAA could not read the MCP server's XAA parameters from {metadata_url} "
+                f"({type(exc).__name__}: {exc}). Set the MCP_XAA_* settings on the agent to "
+                "skip this lookup."
             ) from exc
-        _DISCOVERED_PARAMS[metadata_url] = params
+        with _LOCK:
+            _DISCOVERED_PARAMS[metadata_url] = params
     return params
 
 
@@ -125,6 +160,14 @@ async def exchange_caller_token(mcp_config: MCPConfig, mcp_server_url: str) -> s
             f"'{OAUTH_ACCESS_TOKEN_HEADER}'. The MCP connection needs the caller's Okta "
             "access token."
         )
+    try:
+        XAATokenExchangeCacheManager.get_jwt_json_without_validating(subject_token)
+    except jwt.PyJWTError:
+        raise RuntimeError(
+            f"MCP_USE_XAA cannot exchange the caller token in '{OAUTH_ACCESS_TOKEN_HEADER}': "
+            "it is not a JWT."
+        ) from None
+
     token_exchange = _token_exchange()
     params = await _xaa_params(mcp_config, mcp_server_url)
     return await token_exchange.exchange_token(params, subject_token)
