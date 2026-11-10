@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `drmcp`: Fixed tool error messages returned to the MCP client carrying secrets, such as the
   token quoted in the DataRobot SDK's authentication error. They are redacted the same way as
   the logs, which also masks email addresses.
+- `drmcp`: Fixed the same secrets reaching OpenTelemetry in the spans `drmcp` creates for a failed
+  request or tool call (status, exception message and stack trace) and in the tool error log.
 
 ## 0.31.3 - 2026-10-30
 - `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set

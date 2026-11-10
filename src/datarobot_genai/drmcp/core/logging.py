@@ -64,12 +64,13 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def _log_error(logger: logging.Logger, func_name: str, error: Exception, **kwargs: Any) -> str:
     """Log errors in a consistent format."""
-    error_msg = f"{type(error).__name__}: {str(error)}"
+    # Redacted here because the log formatter covers neither the OTel log export nor the
+    # return value, which goes to the MCP client.
+    error_msg = f"{type(error).__name__}: {redact_secrets(str(error))}"
     logger.error(f"Error in {func_name}: {error_msg}")
     logger.debug(f"Full traceback: {traceback.format_exc()}")
     logger.debug(f"Function arguments: {kwargs}")
-    # The return value goes to the MCP client, which the log formatter doesn't cover.
-    return f"Error in {func_name}: {type(error).__name__}: {redact_secrets(str(error))}"
+    return f"Error in {func_name}: {error_msg}"
 
 
 def _mcp_message_for_dr_tool_error(e: DRToolError) -> str:
