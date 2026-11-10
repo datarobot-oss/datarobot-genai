@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.6 - 2026-11-10
+- `core/mcp`: New setting `MCP_USE_XAA`, off by default. When it is `true`, the MCP connection the
+  agent sets up from `MCP_DEPLOYMENT_ID` or `MCP_SERVER_PORT` sends the caller's Okta token instead
+  of the DataRobot API token. Nothing changes unless you set it.
+  - The agent exchanges the caller's access token from `x-datarobot-external-access-token` with
+    Okta cross-application access (XAA) and sends only the exchanged token. It sends no DataRobot
+    API token, forwards no request headers and never falls back to the API token. It needs
+    `IDP_AGENT_ID` and `IDP_AGENT_PRIVATE_KEY_JWK`.
+  - A request without the caller's Okta token fails with an error. That includes chats in the
+    playground and calls made with a DataRobot API key. The same happens when the token is expired
+    or Okta refuses the exchange.
+  - The XAA parameters come from `MCP_XAA_TRUSTED_ISSUER`, `MCP_XAA_EXCHANGE_AUDIENCE` and
+    `MCP_XAA_TOKEN_URL`, plus the optional `MCP_XAA_TOKEN_AUDIENCE` and `MCP_XAA_SCOPES`. When none
+    is set, the agent reads them from the MCP server's `/.well-known/oauth-protected-resource`
+    document. On DataRobot 11.14 and older, set them: the agent cannot read that document from an
+    MCP server deployed as a custom model.
+  - `MCP_WORKLOAD_ID` is not covered yet. It keeps sending the API token and logs a warning.
+    `EXTERNAL_MCP_URL` is not affected.
+  - `MCPConfig.authenticated_server_config()` returns the server config with the exchanged token.
+    With `MCP_USE_XAA` on, `MCPConfig.server_config` holds no credentials.
+
 ## 0.31.3 - 2026-10-30
 - `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set
   one of the two new settings.

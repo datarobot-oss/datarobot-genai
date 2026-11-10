@@ -140,9 +140,23 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
     authorization_context: dict[str, Any] | None = None
     forwarded_headers: dict[str, str] | None = None
     mcp_server_port: int | None = None
+    mcp_use_xaa: bool = False
+    mcp_xaa_trusted_issuer: str | None = None
+    mcp_xaa_exchange_audience: str | None = None
+    mcp_xaa_token_url: str | None = None
+    mcp_xaa_token_audience: str | None = None
+    mcp_xaa_scopes: str | None = None
 
     _auth_context_handler: AuthContextHeaderHandler | None = None
     _server_config: dict[str, Any] | None = None
+
+    @field_validator("mcp_use_xaa", mode="before")
+    @classmethod
+    def validate_mcp_use_xaa(cls, value: Any) -> Any:
+        # A runtime parameter with no value arrives as None or an empty string.
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return False
+        return value
 
     @field_validator("external_mcp_headers", mode="before")
     @classmethod
@@ -234,6 +248,28 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             self._server_config = self._build_server_config()
         return self._server_config
 
+    @property
+    def uses_xaa(self) -> bool:
+        """True when the connection sends the caller's exchanged Okta token, not the API token."""
+        return self.mcp_use_xaa and self._config_kind() in ("deployment", "local")
+
+    async def authenticated_server_config(self) -> dict[str, Any] | None:
+        """Return ``server_config``, with the caller's exchanged Okta token when XAA is on."""
+        server_config = self.server_config
+        if server_config is None or not self.uses_xaa:
+            return server_config
+
+        # Imported here: the exchange needs the dragent extra, MCPConfig does not.
+        try:
+            from datarobot_genai.dragent.mcp_xaa import exchange_caller_token
+        except ImportError as exc:
+            raise RuntimeError(
+                "MCP_USE_XAA needs the dragent extra. Install datarobot-genai[dragent]."
+            ) from exc
+
+        token = await exchange_caller_token(self, server_config["url"])
+        return {**server_config, "headers": {"Authorization": f"Bearer {token}"}}
+
     def _config_kind(self) -> Literal["workload", "deployment", "external", "local"] | None:
         """Single source of truth for which MCP server config is active.
 
@@ -273,6 +309,9 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
             Dictionary containing forwarded headers (if available) and authentication headers.
         """
         headers: dict[str, str] = {}
+        if self.uses_xaa:
+            # The exchanged token is the only header sent: authenticated_server_config adds it.
+            return headers
         if self.forwarded_headers:
             headers.update(self.forwarded_headers)
         headers.update(self._authorization_bearer_header())
@@ -331,6 +370,11 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 # Nowhere to connect: better no MCP server than a guessed URL.
                 return None
             headers = self._build_authenticated_headers()
+            if self.mcp_use_xaa:
+                logger.warning(
+                    "MCP_USE_XAA does not apply to MCP_WORKLOAD_ID yet. "
+                    "The workload MCP still gets the DataRobot API token."
+                )
 
             logger.info(f"Using DataRobot workload MCP: {url}")
 
@@ -346,7 +390,7 @@ class MCPConfig(DataRobotAppFrameworkBaseSettings):
                 raise ValueError(
                     "When using a DataRobot hosted MCP deployment, datarobot_endpoint must be set."
                 )
-            if self.datarobot_api_token is None:
+            if self.datarobot_api_token is None and not self.uses_xaa:
                 raise ValueError(
                     "When using a DataRobot hosted MCP deployment, datarobot_api_token must be set."
                 )

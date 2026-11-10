@@ -107,14 +107,16 @@ class DataRobotMCPAuthProvider(AuthProviderBase[DataRobotMCPAuthProviderConfig])
         authentication_context = extract_authorization_from_context()
         mcp_config = MCPConfig(
             forwarded_headers=forwarded_headers, authorization_context=authentication_context
-        ).server_config
+        )
+        server_config = await mcp_config.authenticated_server_config()
 
         # in dragent we get forwarded_headers and authentication_context from Context
         # in drum we write self.config.headers with a custom loader
         auth_headers = {}
-        if mcp_config:
-            auth_headers.update(mcp_config["headers"])
-        if self.config.headers:
+        if server_config:
+            auth_headers.update(server_config["headers"])
+        # With XAA the exchanged token is the only header sent.
+        if self.config.headers and not mcp_config.uses_xaa:
             auth_headers.update(self.config.headers)
 
         return AuthResult(

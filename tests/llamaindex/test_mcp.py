@@ -29,6 +29,16 @@ def empty_agent_auth_context():
         yield
 
 
+def _xaa_config() -> MCPConfig:
+    return MCPConfig(
+        mcp_deployment_id="abc123def456789012345678",
+        datarobot_endpoint="https://app.datarobot.com/api/v2",
+        datarobot_api_token="test-api-key",
+        forwarded_headers={"x-datarobot-api-key": "caller-key"},
+        mcp_use_xaa=True,
+    )
+
+
 @pytest.fixture
 def mock_aget():
     with patch(
@@ -130,6 +140,26 @@ class TestLoadMCPTools:
             client_headers = call_args[1]["client"].headers
             assert client_headers["x-datarobot-api-key"] == "scoped-token-123"
             assert client_headers["Authorization"] == f"Bearer {api_key}"
+
+    @pytest.mark.usefixtures("mcp_xaa_exchange")
+    async def test_mcp_use_xaa_sends_only_the_exchanged_token(self, mock_aget):
+        # GIVEN MCP_USE_XAA on and an exchange that works
+        # WHEN the tools are loaded
+        async with mcp_tools_context(_xaa_config()):
+            pass
+
+        # THEN the connection carries the exchanged token and nothing else
+        assert mock_aget.await_args[1]["client"].headers == {"Authorization": "Bearer xaa-token"}
+
+    async def test_mcp_use_xaa_failed_exchange_raises(self, mock_aget, mcp_xaa_exchange):
+        # GIVEN MCP_USE_XAA on and an exchange that fails
+        mcp_xaa_exchange.side_effect = RuntimeError("Okta refused")
+
+        # WHEN / THEN loading the tools raises instead of running without them
+        with pytest.raises(RuntimeError, match="Okta refused"):
+            async with mcp_tools_context(_xaa_config()):
+                pass
+        mock_aget.assert_not_awaited()
 
     @pytest.mark.usefixtures("mock_aget")
     async def test_mcp_tools_context_exception_is_propagated(self):

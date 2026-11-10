@@ -11,17 +11,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from contextlib import asynccontextmanager
 from enum import Enum
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.plugins.mcp.client.client_base import MCPBaseClient
 from nat.plugins.mcp.client.client_impl import MCPFunctionGroup
 from pydantic import BaseModel
 from pydantic import create_model
 
+from datarobot_genai.dragent.plugins.datarobot_auth_provider import DataRobotMCPAuthProviderConfig
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPClientConfig
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import DataRobotMCPServerConfig
 from datarobot_genai.dragent.plugins.datarobot_mcp_client import _make_input_schema_enum_safe
@@ -99,6 +102,28 @@ async def test_datarobot_mcp_client():
             # Function names are prefixed with the group name (e.g. datarobot_mcp_tools__a)
             assert "datarobot_mcp_tools__a" in all_functions
             assert "datarobot_mcp_tools__b" in all_functions
+
+
+async def test_datarobot_mcp_client_failed_xaa_exchange_raises():
+    # GIVEN MCP_USE_XAA on and a request without the caller's Okta token
+    env = {
+        "MCP_DEPLOYMENT_ID": "c" * 24,
+        "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        "MCP_USE_XAA": "true",
+    }
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch(
+            "datarobot_genai.dragent.plugins.datarobot_mcp_client.DataRobotMCPStreamableHTTPClient"
+        ) as mock_client,
+    ):
+        async with WorkflowBuilder() as builder:
+            await builder.add_auth_provider("datarobot_mcp_auth", DataRobotMCPAuthProviderConfig())
+
+            # WHEN / THEN building the group raises instead of yielding a group without tools
+            with pytest.raises(RuntimeError, match="no caller token"):
+                await builder.add_function_group("datarobot_mcp_tools", DataRobotMCPClientConfig())
+    mock_client.assert_not_called()
 
 
 # Tests for the BUZZOK-30556 enum-safe input schema patch.

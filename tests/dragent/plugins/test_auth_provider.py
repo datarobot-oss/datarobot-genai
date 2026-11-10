@@ -13,6 +13,8 @@
 import os
 from unittest.mock import patch
 
+import pytest
+from datarobot.models.genai.agent.auth import set_authorization_context
 from nat.authentication.api_key.api_key_auth_provider import APIKeyAuthProvider
 from nat.builder.workflow_builder import WorkflowBuilder
 from pydantic import SecretStr
@@ -78,3 +80,44 @@ async def test_datarobot_mcp_auth_provider():
         await builder.add_auth_provider("datarobot_mcp_auth", config)
         auth_provider = await builder.get_auth_provider("datarobot_mcp_auth")
         assert isinstance(auth_provider, DataRobotMCPAuthProvider)
+
+
+@pytest.mark.parametrize(
+    ("use_xaa", "expected_headers"),
+    [
+        pytest.param(
+            "false",
+            {"x-datarobot-api-key": "caller-key", "Authorization": "Bearer tok", "X-Static": "v"},
+            id="off",
+        ),
+        pytest.param("true", {"Authorization": "Bearer xaa-token"}, id="on"),
+    ],
+)
+@pytest.mark.usefixtures("mcp_xaa_exchange")
+async def test_datarobot_mcp_auth_provider_headers(use_xaa, expected_headers):
+    # GIVEN an MCP deployment, a header forwarded from the caller and one set on the provider
+    set_authorization_context({})
+    env = {
+        "MCP_DEPLOYMENT_ID": "c" * 24,
+        "DATAROBOT_ENDPOINT": "https://app.datarobot.com/api/v2",
+        "DATAROBOT_API_TOKEN": "tok",
+        "MCP_USE_XAA": use_xaa,
+    }
+    module = "datarobot_genai.dragent.plugins.datarobot_auth_provider"
+    with (
+        patch.dict(os.environ, env, clear=True),
+        patch(
+            f"{module}.extract_datarobot_headers_from_context",
+            return_value={"x-datarobot-api-key": "caller-key"},
+        ),
+    ):
+        provider = DataRobotMCPAuthProvider(
+            DataRobotMCPAuthProviderConfig(headers={"X-Static": "v"})
+        )
+
+        # WHEN the provider authenticates a request
+        result = await provider.authenticate()
+
+    # THEN MCP_USE_XAA off sends the same headers as before, and on only the exchanged token
+    headers = {cred.name: cred.value.get_secret_value() for cred in result.credentials}
+    assert headers == expected_headers

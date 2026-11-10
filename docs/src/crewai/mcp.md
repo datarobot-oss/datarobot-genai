@@ -17,3 +17,5 @@
 # Tools and MCP (CrewAI sample)
 
 When tools are injected at runtime, the DataRobot-wrapped crew agent **keeps the original per-agent tools** and **appends** injected ones (so MCP and task-specific tools can coexist). The minimal e2e YAML does not declare MCP groups; use [nat/mcp.md](../nat/mcp.md) for a full **`function_groups`** example.
+
+To send the caller's Okta token to the MCP server instead of the DataRobot API token, see [Send the caller's Okta token to the MCP server](../langgraph/mcp.md#send-the-callers-okta-token-to-the-mcp-server).

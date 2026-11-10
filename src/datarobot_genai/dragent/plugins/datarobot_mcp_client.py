@@ -169,10 +169,20 @@ async def datarobot_mcp_client_function_group(
     )
     from nat.plugins.mcp.client.client_impl import mcp_session_tool_function  # noqa: PLC0415
 
+    from datarobot_genai.core.mcp import MCPConfig  # noqa: PLC0415
+    from datarobot_genai.dragent.plugins.datarobot_auth_provider import (  # noqa: PLC0415
+        DataRobotMCPAuthProvider,
+    )
+
     # Resolve auth provider if specified
     auth_provider = None
     if config.server.auth_provider:
         auth_provider = await _builder.get_auth_provider(config.server.auth_provider)
+
+    # With MCP_USE_XAA a failed token exchange fails the request. A failed connection
+    # below only drops the tools.
+    if isinstance(auth_provider, DataRobotMCPAuthProvider) and MCPConfig().uses_xaa:
+        await auth_provider.authenticate()
 
     # Build the appropriate client
     if config.server.transport == "sse":

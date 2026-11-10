@@ -47,7 +47,8 @@ async def mcp_tools_context(
     -------
         List of MCP tools, or empty list if no MCP configuration is present.
     """
-    server_params = mcp_config.server_config
+    # A failed XAA exchange (MCP_USE_XAA) raises here and fails the request.
+    server_params = await mcp_config.authenticated_server_config()
 
     if not server_params:
         logger.info("No MCP server configured, using empty tools list")

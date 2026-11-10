@@ -157,10 +157,8 @@ class MCPClientWithXAASupportConfig(  # type: ignore[call-arg]
     )
 
 
-def get_mcp_auth_server_metadata_url(
-    config: MCPClientWithXAASupportConfig,
-) -> str:
-    mcp_server_url = str(config.server.url)
+def build_mcp_auth_server_metadata_url(mcp_server_url: str) -> str:
+    """Return the protected resource metadata URL of the MCP server at ``mcp_server_url``."""
     url_split = urlsplit(mcp_server_url)
     url_path = url_split.path.rstrip("/")
     if url_path.endswith("/mcp"):
@@ -168,10 +166,20 @@ def get_mcp_auth_server_metadata_url(
     return f"{url_split.scheme}://{url_split.netloc}{url_path}/.well-known/oauth-protected-resource"
 
 
+def get_mcp_auth_server_metadata_url(
+    config: MCPClientWithXAASupportConfig,
+) -> str:
+    return build_mcp_auth_server_metadata_url(str(config.server.url))
+
+
 async def get_xaa_params_from_mcp_auth_server_metadata(
     config: MCPClientWithXAASupportConfig,
 ) -> _CrossAppFlowParams:
-    mcp_auth_server_metadata_url = get_mcp_auth_server_metadata_url(config)
+    return await fetch_xaa_params(get_mcp_auth_server_metadata_url(config))
+
+
+async def fetch_xaa_params(mcp_auth_server_metadata_url: str) -> _CrossAppFlowParams:
+    """Return the XAA parameters published at ``mcp_auth_server_metadata_url``."""
     async with get_retriable_async_http_client() as http_client:
         try:
             resp = await http_client.get(mcp_auth_server_metadata_url)

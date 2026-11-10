@@ -19,3 +19,5 @@
 When the platform injects tools (including MCP), they are **added to** each workflow agent’s existing tools in the DataRobot integration so hand-authored tools stay available.
 
 Configure MCP deployment / URLs in the environment; the minimal **`workflow.yaml`** in the LlamaIndex folder does not show **`function_groups`**—see [nat/mcp.md](../nat/mcp.md) for the YAML-heavy pattern.
+
+To send the caller's Okta token to the MCP server instead of the DataRobot API token, see [Send the caller's Okta token to the MCP server](../langgraph/mcp.md#send-the-callers-okta-token-to-the-mcp-server).

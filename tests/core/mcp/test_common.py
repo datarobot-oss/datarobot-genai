@@ -14,6 +14,7 @@
 
 import json
 import os
+import sys
 from http import HTTPStatus
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -22,6 +23,7 @@ import httpx
 import pytest
 import respx
 from datarobot.models.genai.agent.auth import set_authorization_context
+from pydantic import ValidationError
 
 from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.core.mcp.config import clear_workload_endpoint_cache
@@ -1464,6 +1466,118 @@ class TestMCPConfig:
             headers = MCPConfig().server_config["headers"]
         assert headers["Authorization"] == "Bearer tok"
         assert "x-datarobot-api-key" not in headers
+
+
+XAA_ENV = {"DATAROBOT_ENDPOINT": API_ENDPOINT, "DATAROBOT_API_TOKEN": "tok"}
+XAA_FORWARDED_HEADERS = {
+    "x-datarobot-external-access-token": "caller-okta",
+    "x-datarobot-api-key": "caller-key",
+}
+MCP_KIND_ENV = {
+    "deployment": {"MCP_DEPLOYMENT_ID": "c" * 24},
+    "local": {"MCP_SERVER_PORT": "9000"},
+    "workload": {"MCP_WORKLOAD_ID": WORKLOAD_ID},
+    "external": {
+        "EXTERNAL_MCP_URL": "https://mcp.example.com/mcp",
+        "EXTERNAL_MCP_HEADERS": '{"X-Key": "v"}',
+    },
+}
+API_TOKEN_HEADERS = {**XAA_FORWARDED_HEADERS, "Authorization": "Bearer tok"}
+
+
+class TestMCPUseXAA:
+    """``MCP_USE_XAA`` replaces the API token headers with the caller's exchanged Okta token."""
+
+    @pytest.fixture(autouse=True)
+    def workload_endpoint(self):
+        set_authorization_context({})
+        with patch(
+            "datarobot_genai.core.mcp.config.lookup_workload_endpoint",
+            return_value=f"https://test.datarobot.com/workloads/{WORKLOAD_ID}/",
+        ):
+            yield
+
+    @staticmethod
+    def _config(*envs: dict[str, str]) -> MCPConfig:
+        env = {name: value for env in envs for name, value in env.items()}
+        with patch.dict(os.environ, env, clear=True):
+            return MCPConfig(forwarded_headers=dict(XAA_FORWARDED_HEADERS))
+
+    @pytest.mark.parametrize(
+        ("kind", "setting", "expected_headers"),
+        [
+            pytest.param("deployment", {}, API_TOKEN_HEADERS, id="deployment-unset"),
+            pytest.param(
+                "deployment", {"MCP_USE_XAA": "false"}, API_TOKEN_HEADERS, id="deployment"
+            ),
+            pytest.param(
+                "deployment", {"MCP_USE_XAA": ""}, API_TOKEN_HEADERS, id="deployment-empty"
+            ),
+            pytest.param("local", {"MCP_USE_XAA": "false"}, API_TOKEN_HEADERS, id="local"),
+            pytest.param("workload", {"MCP_USE_XAA": "true"}, API_TOKEN_HEADERS, id="workload-on"),
+            pytest.param("external", {"MCP_USE_XAA": "true"}, {"X-Key": "v"}, id="external-on"),
+        ],
+    )
+    async def test_headers_stay_as_they_were(
+        self, kind, setting, expected_headers, mcp_xaa_exchange
+    ):
+        # GIVEN the setting off, or on for a kind it does not cover
+        config = self._config(XAA_ENV, MCP_KIND_ENV[kind], setting)
+
+        # WHEN the server config is built, with and without the exchange step
+        server_config = await config.authenticated_server_config()
+
+        # THEN the API token headers go out as before and nothing is exchanged
+        assert config.server_config["headers"] == expected_headers
+        assert server_config == config.server_config
+        mcp_xaa_exchange.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("kind", "env"),
+        [
+            pytest.param("deployment", XAA_ENV, id="deployment"),
+            pytest.param("deployment", {"DATAROBOT_ENDPOINT": API_ENDPOINT}, id="no-api-token"),
+            pytest.param("local", XAA_ENV, id="local"),
+        ],
+    )
+    async def test_setting_on_sends_only_the_exchanged_token(self, kind, env, mcp_xaa_exchange):
+        # GIVEN MCP_USE_XAA on, with or without a DataRobot API token
+        config = self._config(env, MCP_KIND_ENV[kind], {"MCP_USE_XAA": "true"})
+
+        # WHEN the server config is built, with and without the exchange step
+        server_config = await config.authenticated_server_config()
+
+        # THEN no API token or forwarded header is built, only the exchanged token
+        assert config.server_config["headers"] == {}
+        assert server_config == {
+            **config.server_config,
+            "headers": {"Authorization": "Bearer xaa-token"},
+        }
+        mcp_xaa_exchange.assert_awaited_once_with(config, config.server_config["url"])
+
+    async def test_a_failed_exchange_raises(self, mcp_xaa_exchange):
+        # GIVEN an exchange that fails
+        mcp_xaa_exchange.side_effect = RuntimeError("Okta refused")
+        config = self._config(XAA_ENV, MCP_KIND_ENV["deployment"], {"MCP_USE_XAA": "true"})
+
+        # WHEN / THEN the error reaches the caller, there is no API token fallback
+        with pytest.raises(RuntimeError, match="Okta refused"):
+            await config.authenticated_server_config()
+
+    async def test_missing_dragent_extra_names_the_setting(self):
+        # GIVEN an install without the dragent extra
+        config = self._config(XAA_ENV, MCP_KIND_ENV["deployment"], {"MCP_USE_XAA": "true"})
+
+        # WHEN / THEN the error names the setting and the extra
+        with (
+            patch.dict(sys.modules, {"datarobot_genai.dragent.mcp_xaa": None}),
+            pytest.raises(RuntimeError, match=r"MCP_USE_XAA needs the dragent extra"),
+        ):
+            await config.authenticated_server_config()
+
+    def test_a_value_that_is_not_a_boolean_is_rejected(self):
+        with pytest.raises(ValidationError):
+            self._config({"MCP_USE_XAA": "maybe"})
 
 
 class TestLookupWorkloadEndpoint:

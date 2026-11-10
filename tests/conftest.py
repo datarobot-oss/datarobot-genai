@@ -13,8 +13,12 @@
 # limitations under the License.
 
 import inspect
+import sys
+from collections.abc import Iterator
 from typing import Any
+from unittest.mock import AsyncMock
 from unittest.mock import Mock
+from unittest.mock import patch
 
 import aiohttp
 import pytest
@@ -134,6 +138,15 @@ def agent_auth_context_data() -> dict[str, Any]:
             {"id": "id123", "type": "user", "provider_type": "github", "provider_user_id": "123"}
         ],
     }
+
+
+@pytest.fixture
+def mcp_xaa_exchange() -> Iterator[AsyncMock]:
+    """Stub the MCP XAA token exchange. The real module needs the dragent extra."""
+    exchange = AsyncMock(return_value="xaa-token")
+    module = Mock(exchange_caller_token=exchange)
+    with patch.dict(sys.modules, {"datarobot_genai.dragent.mcp_xaa": module}):
+        yield exchange
 
 
 @pytest.fixture(autouse=True, scope="function")

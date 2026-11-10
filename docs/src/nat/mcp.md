@@ -38,6 +38,8 @@ authentication:
 
 This ties MCP HTTP calls to DataRobot-style auth. Per-request headers (API token, identity context) are read from NAT request context at runtime so MCP and LLM calls stay consistent.
 
+With `MCP_USE_XAA=true`, this block sends the caller's exchanged Okta token instead, and no other header, including any `headers` set on the block. See [Send the caller's Okta token to the MCP server](../langgraph/mcp.md#send-the-callers-okta-token-to-the-mcp-server).
+
 ## `workflow.tool_names` — expose MCP to the orchestrator
 
 The orchestrator only sees listed tools. Include the **group name** (`mcp_tools` in the example), not individual MCP tool names:

@@ -107,8 +107,11 @@ async def mcp_tools_context(mcp_config: MCPConfig) -> AsyncGenerator[list[BaseTo
 
     logger.info("Connecting to MCP server: %s", url)
 
+    # A failed XAA exchange (MCP_USE_XAA) raises here and fails the request.
+    server_config = await mcp_config.authenticated_server_config()
+
     try:
-        adapter = MCPAdapt(mcp_config.server_config, _RawSchemaCrewAIAdapter())
+        adapter = MCPAdapt(server_config, _RawSchemaCrewAIAdapter())
         tools = adapter.__enter__()
     except Exception as exc:
         logger.warning(
