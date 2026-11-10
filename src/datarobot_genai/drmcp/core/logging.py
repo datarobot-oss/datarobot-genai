@@ -68,12 +68,13 @@ def _log_error(logger: logging.Logger, func_name: str, error: Exception, **kwarg
     logger.error(f"Error in {func_name}: {error_msg}")
     logger.debug(f"Full traceback: {traceback.format_exc()}")
     logger.debug(f"Function arguments: {kwargs}")
-    return f"Error in {func_name}: {error_msg}"
+    # The return value goes to the MCP client, which the log formatter doesn't cover.
+    return f"Error in {func_name}: {type(error).__name__}: {redact_secrets(str(error))}"
 
 
 def _mcp_message_for_dr_tool_error(e: DRToolError) -> str:
     """Format drtools ToolError for fastmcp (kind prefix, no duplicate wrapping)."""
-    return f"[{e.kind.value}] {e.message}"
+    return f"[{e.kind.value}] {redact_secrets(e.message)}"
 
 
 def _kind_for_wrapped_exception(exc: Exception) -> ToolErrorKind:
@@ -111,6 +112,9 @@ def log_execution(func: F) -> F:
             return result
         except FastMCPToolError as e:
             _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)
+            message = redact_secrets(str(e))
+            if message != str(e):
+                raise FastMCPToolError(message) from e
             raise
         except DRToolError as e:
             _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)

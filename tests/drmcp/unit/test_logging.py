@@ -15,6 +15,7 @@
 import logging
 
 import pytest
+from datarobot.errors import ClientError
 from fastmcp.exceptions import ToolError as FastMCPToolError
 from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from pydantic import TypeAdapter
@@ -124,6 +125,40 @@ async def test_log_execution_wraps_exception_with_403_as_authentication() -> Non
     with pytest.raises(FastMCPToolError) as exc_info:
         await forbidden()
     assert str(exc_info.value).startswith("[authentication]")
+
+
+_KEY = "NjM4someToken-value_here"
+# The DataRobot SDK's 401 message, which quotes the key.
+_SDK_401_MESSAGE = (
+    "Unable to authenticate to the server - are you sure the provided token of "
+    f'"{_KEY}" and endpoint of "https://dr.example.com/api/v2" are correct?'
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "prefix"),
+    [
+        (ClientError(_SDK_401_MESSAGE, 401), "[authentication] Error in deployment_get_list"),
+        (DRToolError(f"DataRobot API error (401): {_SDK_401_MESSAGE}"), "[internal] DataRobot"),
+        (FastMCPToolError(f"[upstream] {_SDK_401_MESSAGE}"), "[upstream] Unable"),
+    ],
+)
+async def test_log_execution_redacts_secrets_in_the_client_message(
+    error: Exception, prefix: str
+) -> None:
+    # GIVEN a tool that fails with an error quoting the key
+    @log_execution
+    async def deployment_get_list() -> None:
+        raise error
+
+    # WHEN the tool is called
+    with pytest.raises(FastMCPToolError) as exc_info:
+        await deployment_get_list()
+
+    # THEN the message for the MCP client keeps its kind and text, without the key
+    assert str(exc_info.value).startswith(prefix)
+    assert _KEY not in str(exc_info.value)
 
 
 _MESSAGES_CONTAINING_SECRET = [

@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tool and prompt registration and the MCP lineage sync, and serves the items registered so far.
 - `drmcputils`: Added log redaction for `Token <key>` Authorization values and for the DataRobot
   SDK's authentication error, which quotes the API key.
+- `drmcp`: Fixed tool error messages returned to the MCP client carrying secrets, such as the
+  token quoted in the DataRobot SDK's authentication error. They are redacted the same way as
+  the logs, which also masks email addresses.
 
 ## 0.31.3 - 2026-10-30
 - `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set
