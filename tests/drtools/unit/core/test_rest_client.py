@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 import pytest
 
-from datarobot_genai.drmcputils.auth import set_request_headers
 from datarobot_genai.drmcputils.clients.datarobot import ThreadSafeDataRobotClient
 from datarobot_genai.drmcputils.clients.datarobot import get_datarobot_access_token
 from datarobot_genai.drmcputils.clients.datarobot import request_user_dr_client
@@ -66,7 +65,7 @@ class TestRequestUserDrClient:
             expected = mock_dr.client.get_client.return_value
             with request_user_dr_client() as client:
                 mock_cfg.assert_called_once_with(
-                    token="user-tok", endpoint="https://x.example/api/v2", token_type=None
+                    token="user-tok", endpoint="https://x.example/api/v2", token_type="Bearer"
                 )
                 mock_cfg.return_value.__enter__.assert_called_once()
                 assert client is expected
@@ -99,7 +98,7 @@ class TestRequestUserDrSdk:
 
                 assert sdk is dr_mod
             mock_cfg.assert_called_once_with(
-                token="user-tok", endpoint="https://x.example/api/v2", token_type=None
+                token="user-tok", endpoint="https://x.example/api/v2", token_type="Bearer"
             )
 
 
@@ -118,39 +117,6 @@ class TestThreadSafeDataRobotClientRequestUserClient:
             client_wrapper = ThreadSafeDataRobotClient()
             with client_wrapper.request_user_client() as client:
                 mock_cfg.assert_called_once_with(
-                    token="user-tok", endpoint="https://x.example/api/v2", token_type=None
+                    token="user-tok", endpoint="https://x.example/api/v2", token_type="Bearer"
                 )
                 assert client is expected
-
-
-@pytest.mark.parametrize(
-    "scoped_client",
-    [
-        request_user_dr_client,
-        request_user_dr_sdk,
-        lambda: ThreadSafeDataRobotClient().request_user_client(),
-    ],
-)
-@pytest.mark.parametrize(
-    ("headers", "token_type"),
-    [
-        ({"x-datarobot-external-access-token": "idp-token"}, "Bearer"),
-        ({"x-datarobot-external-access-token": "Bearer idp-token"}, "Bearer"),
-        ({"x-datarobot-external-access-token": "idp-token", "x-datarobot-api-key": "key"}, None),
-    ],
-)
-def test_sends_the_callers_idp_token_as_bearer(scoped_client, headers, token_type) -> None:
-    # GIVEN request headers that carry the caller's IdP token
-    set_request_headers(headers)
-
-    # WHEN a request-scoped client is configured
-    with (
-        patch(f"{_MODULE}.client_configuration") as mock_cfg,
-        patch(f"{_MODULE}.dr"),
-        patch(f"{_MODULE}.DRContext"),
-    ):
-        with scoped_client():
-            pass
-
-    # THEN the IdP token is sent as Bearer, unless an API key outranks it
-    assert mock_cfg.call_args.kwargs["token_type"] == token_type

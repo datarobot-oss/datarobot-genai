@@ -32,7 +32,6 @@ from datarobot.client import client_configuration
 from datarobot.context import Context as DRContext
 from datarobot.rest import RESTClientObject
 
-from datarobot_genai.drmcputils.auth import is_external_access_token
 from datarobot_genai.drmcputils.auth import resolve_datarobot_token
 from datarobot_genai.drmcputils.credentials import get_credentials
 from datarobot_genai.drmcputils.exceptions import ToolError
@@ -67,9 +66,8 @@ def get_datarobot_access_token(*, headers_auth_only: bool = True) -> str:
     return get_credentials().datarobot.datarobot_api_token
 
 
-def _token_type(token: str) -> str | None:
-    """Return the SDK token type: DataRobot accepts an IdP token only as "Bearer"."""
-    return "Bearer" if is_external_access_token(token) else None
+# DataRobot takes an API key as "Token" or "Bearer", but a JWT (IdP, service) only as "Bearer".
+SDK_TOKEN_TYPE = "Bearer"
 
 
 @contextmanager
@@ -87,7 +85,7 @@ def request_user_dr_client(*, headers_auth_only: bool = True) -> Iterator[RESTCl
     """
     token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
     endpoint = get_credentials().datarobot.datarobot_endpoint
-    with client_configuration(token=token, endpoint=endpoint, token_type=_token_type(token)):
+    with client_configuration(token=token, endpoint=endpoint, token_type=SDK_TOKEN_TYPE):
         # Avoid use-case context from trafaret affecting tool calls.
         DRContext.use_case = None
         yield cast(RESTClientObject, dr.client.get_client())
@@ -107,7 +105,7 @@ def request_user_dr_sdk(*, headers_auth_only: bool = True) -> Iterator[Any]:
     """
     token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
     endpoint = get_credentials().datarobot.datarobot_endpoint
-    with client_configuration(token=token, endpoint=endpoint, token_type=_token_type(token)):
+    with client_configuration(token=token, endpoint=endpoint, token_type=SDK_TOKEN_TYPE):
         DRContext.use_case = None
         yield dr
 
@@ -122,9 +120,7 @@ class ThreadSafeDataRobotClient:
     def request_user_client(self, *, headers_auth_only: bool = True) -> Iterator[RESTClientObject]:
         """Yield a scoped REST client; same semantics as :func:`request_user_dr_client`."""
         token = get_datarobot_access_token(headers_auth_only=headers_auth_only)
-        with client_configuration(
-            token=token, endpoint=self.endpoint, token_type=_token_type(token)
-        ):
+        with client_configuration(token=token, endpoint=self.endpoint, token_type=SDK_TOKEN_TYPE):
             # Avoid use-case context from trafaret affecting tool calls.
             DRContext.use_case = None
             yield cast(RESTClientObject, dr.client.get_client())
