@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.6 - 2026-11-11
+- New `datarobot_genai.core.auth.workload_token`: a workload identity token requester with two
+  auth modes, picked from env:
+  - Federation: `DATAROBOT_WORKLOAD_TOKEN_FILE` (a projected Kubernetes ServiceAccount token, re-read
+    on every fetch) is exchanged at the token bridge (RFC 8693, `audience` in the body, no client
+    credential). It wins when both modes are configured.
+  - private_key_jwt: `DATAROBOT_CLIENT_PRIVATE_KEY` (PKCS#8 PEM) and `DATAROBOT_CLIENT_KEY_ID` sign an
+    assertion for `client_credentials` with `DATAROBOT_CLIENT_KEY_ALG`, or RS256 when it is unset.
+    Accepted: RS256/384/512, PS256/384/512, ES256/384/512. An alg outside that list, or one that
+    doesn't fit the key (type or EC curve), disables workload identity with an error.
+
+  The client id is `DATAROBOT_CLIENT_ID`, or `WORKLOAD_ID` when that is unset. The requested
+  audience is `DATAROBOT_PUBLIC_API_ENDPOINT`. One process-wide source refreshes the token hourly in
+  the background and keeps the current one through failures until it expires.
+  `WorkloadTokenAuth` (requests) and `WorkloadTokenHttpxAuth` (httpx, sync and async) send it as
+  `Authorization: Bearer`. Nothing calls it yet.
+  - Discovery: strip `/api/v2` from `DATAROBOT_PUBLIC_API_ENDPOINT`, try RFC 8414
+    (`/.well-known/oauth-authorization-server`), then OIDC (`/.well-known/openid-configuration`).
+    The result is cached.
+  - Overrides: `DATAROBOT_OAUTH_DISCOVERY_URL` replaces discovery. `DATAROBOT_OAUTH_TOKEN_ENDPOINT`
+    is where requests go in either mode, and doesn't change the assertion `aud`.
+    `DATAROBOT_OAUTH_CLIENT_ASSERTION_AUDIENCE` sets the assertion `aud`, which is otherwise
+    discovery's `token_endpoint`.
+- Core now requires `pyjwt[crypto]`.
+
 ## 0.31.5 - 2026-11-10
 - `drmcp`: Fixed tools that call DataRobot through the Python SDK sending JWTs, such as the
   caller's external identity provider token (from `x-datarobot-external-access-token`) or a
