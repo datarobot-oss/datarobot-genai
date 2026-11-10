@@ -50,7 +50,7 @@ def _warn_mcp_use_xaa_not_applied(kind: str | None) -> None:
     """Warn once per kind: MCPConfig is built per request, and this would repeat."""
     logger.warning(
         "MCP_USE_XAA applies only to MCP_DEPLOYMENT_ID. "
-        "The %s MCP server still gets the DataRobot API token.",
+        "The %s MCP server is called as before, with the DataRobot API token if one is set.",
         kind,
     )
 

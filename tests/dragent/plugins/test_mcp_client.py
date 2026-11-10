@@ -114,8 +114,14 @@ MCP_CLIENT = "datarobot_genai.dragent.plugins.datarobot_mcp_client.DataRobotMCPS
 
 async def test_datarobot_mcp_client_exchanges_before_it_connects(mcp_xaa_exchange):
     # GIVEN MCP_USE_XAA on and an exchange that works
-    fake_client = _FakeMCPClient(tools={"a": _FakeTool("a")})
-    with patch.dict(os.environ, XAA_ENV, clear=True), patch(MCP_CLIENT, return_value=fake_client):
+    calls = []
+    mcp_xaa_exchange.side_effect = lambda *_: calls.append("exchange") or "xaa-token"
+
+    def make_client(*_, **__):
+        calls.append("client")
+        return _FakeMCPClient(tools={"a": _FakeTool("a")})
+
+    with patch.dict(os.environ, XAA_ENV, clear=True), patch(MCP_CLIENT, side_effect=make_client):
         async with WorkflowBuilder() as builder:
             await builder.add_auth_provider("datarobot_mcp_auth", DataRobotMCPAuthProviderConfig())
 
@@ -123,8 +129,8 @@ async def test_datarobot_mcp_client_exchanges_before_it_connects(mcp_xaa_exchang
             await builder.add_function_group("datarobot_mcp_tools", DataRobotMCPClientConfig())
             function_group = await builder.get_function_group("datarobot_mcp_tools")
 
-            # THEN the token is exchanged once and the tools are loaded
-            mcp_xaa_exchange.assert_awaited_once()
+            # THEN the token is exchanged once, before the client is made, and the tools load
+            assert calls == ["exchange", "client"]
             assert "datarobot_mcp_tools__a" in await function_group.get_all_functions()
 
 

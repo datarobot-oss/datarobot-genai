@@ -58,9 +58,9 @@ Before you turn it on:
 - A request without the caller's Okta token fails with an error. That includes chats in the playground and calls made with a DataRobot API key. The same happens when the token is expired or Okta refuses the exchange.
 - The MCP server gets no authorization context and no forwarded token headers. Tools on the server that need them, such as the Jira, Confluence, Google Drive and Microsoft Graph tools, do not get them for these requests.
 - Only `MCP_DEPLOYMENT_ID` is covered. With `MCP_WORKLOAD_ID` or `MCP_SERVER_PORT` the agent still sends the DataRobot API token, and logs a warning once. `EXTERNAL_MCP_URL` is not affected: the agent sends only `EXTERNAL_MCP_HEADERS` to it.
-- When the agent reads the parameters from the MCP server, it trusts that server to name the Okta endpoints the caller's token is sent to, and a request also fails when the server cannot be reached. Set the `MCP_XAA_*` settings to avoid both.
-- The agent gets the token once per request and uses it for the whole run. It reuses a cached token only while the token has five minutes left, or half its lifetime if that is shorter. A run that outlives the token loses its MCP tools for the rest of the run.
-- With the NAT `datarobot_mcp_client` function group, the exchange is checked when the group is built for a user. If it fails on a later request, the MCP call fails and the agent gets a tool error. The request itself does not fail.
+- When the agent reads the parameters from the MCP server, it trusts that server to name the Okta endpoints the caller's token is sent to. A request also fails when the server does not answer within 10 seconds. Set the `MCP_XAA_*` settings to avoid both.
+- The LangGraph, CrewAI and LlamaIndex adapters get the token once per request and use it for the whole run. A run that outlives the token loses its MCP tools for the rest of the run. A cached token is reused only while it has five minutes left, or half its lifetime if that is shorter.
+- The NAT `datarobot_mcp_client` function group is different. It gets the token for each MCP call, and it checks the exchange only when the group is built for a user. If the exchange fails on a later request, the MCP call fails and the agent gets a tool error. The request itself does not fail.
 - The token endpoint authentication method is always `private_key_jwt`.
 - The agent needs the `dragent` extra of `datarobot-genai`.
 - Code that reads `MCPConfig.server_config` directly gets no credentials. Use `await mcp_config.authenticated_server_config()`, as `mcp_tools_context` does.

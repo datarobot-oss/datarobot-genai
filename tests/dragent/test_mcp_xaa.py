@@ -115,8 +115,7 @@ async def test_parameters_are_discovered_once_when_no_setting_is_set(
         await _exchange(AGENT_IDENTITY, CALLER_HEADERS)
 
     # THEN the MCP server's metadata is fetched once and reused
-    fetch_xaa_params.assert_awaited_once()
-    assert fetch_xaa_params.await_args.args[0] == METADATA_URL
+    fetch_xaa_params.assert_awaited_once_with(METADATA_URL)
     exchange_token.assert_awaited_with(DISCOVERED_PARAMS, CALLER_TOKEN)
 
 
@@ -173,8 +172,8 @@ async def test_exchange_that_cannot_happen_raises(
 
 @pytest.mark.parametrize(
     "error",
-    [RuntimeError("HTTP 401"), KeyError("trusted_issuer"), ValueError("not JSON")],
-    ids=["unreadable", "incomplete-metadata", "not-json"],
+    [RuntimeError("HTTP 401"), KeyError("trusted_issuer"), TypeError("not a dict")],
+    ids=["unreadable", "incomplete-metadata", "wrong-shape"],
 )
 @pytest.mark.usefixtures("exchange_token")
 async def test_failed_discovery_points_at_the_settings(
@@ -189,6 +188,13 @@ async def test_failed_discovery_points_at_the_settings(
         with pytest.raises(RuntimeError, match=r"Set the MCP_XAA_\* settings on the agent"):
             await _exchange(AGENT_IDENTITY, CALLER_HEADERS)
     assert fetch_xaa_params.await_count == 2
+
+
+@pytest.mark.parametrize(("ttl", "reused_for"), [(3600, 3300), (600, 300), (200, 100), (0, 0)])
+def test_a_cached_token_is_dropped_before_it_expires(ttl: float, reused_for: float) -> None:
+    # GIVEN a token with ``ttl`` seconds left
+    # WHEN / THEN it is reused until 5 minutes before it expires, or for half its life
+    assert mcp_xaa._reuse_seconds(ttl) == reused_for
 
 
 async def test_exchanged_tokens_are_cached_per_caller() -> None:

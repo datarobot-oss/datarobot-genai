@@ -105,6 +105,13 @@ XAA_ENV = {
 CALLER_TOKEN = make_jwt(sub="alice")
 
 
+@pytest.fixture
+def clear_mcp_xaa_caches():
+    mcp_xaa.clear_caches()
+    yield
+    mcp_xaa.clear_caches()
+
+
 @pytest.mark.parametrize(
     ("xaa_env", "expected_headers", "exchanged"),
     [
@@ -122,11 +129,11 @@ CALLER_TOKEN = make_jwt(sub="alice")
         pytest.param(XAA_ENV, {"Authorization": "Bearer xaa-token"}, [CALLER_TOKEN], id="on"),
     ],
 )
+@pytest.mark.usefixtures("clear_mcp_xaa_caches")
 async def test_datarobot_mcp_auth_provider_headers(xaa_env, expected_headers, exchanged):
     # GIVEN an MCP deployment, a header set on the provider, and a request that carries the
     # caller's API key and Okta token
     set_authorization_context({})
-    mcp_xaa.clear_caches()
     exchange = Mock(exchange_token=AsyncMock(return_value="xaa-token"))
     with (
         patch.dict(os.environ, {**MCP_DEPLOYMENT_ENV, **xaa_env}, clear=True),
@@ -141,7 +148,6 @@ async def test_datarobot_mcp_auth_provider_headers(xaa_env, expected_headers, ex
 
         # WHEN the provider authenticates the request
         result = await DataRobotMCPAuthProvider(config).authenticate()
-    mcp_xaa.clear_caches()
 
     # THEN MCP_USE_XAA off sends the same headers as before, and on only the token
     # exchanged from the caller's

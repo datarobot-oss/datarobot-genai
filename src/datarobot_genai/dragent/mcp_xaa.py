@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import threading
 from typing import TYPE_CHECKING
@@ -26,8 +27,6 @@ from cachetools import TLRUCache
 from cachetools import TTLCache
 
 from datarobot_genai.dragent.cross_app_access_config import TokenEndpointAuthMethod
-from datarobot_genai.dragent.http_client import AsyncClientConfig
-from datarobot_genai.dragent.http_client import get_retriable_async_http_client
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.inbound_token import find_idp_token
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
@@ -47,10 +46,11 @@ if TYPE_CHECKING:
 
 #: Seconds the parameters an MCP server publishes are reused before asking it again.
 DISCOVERY_TTL_SECONDS = 300
-#: The token is sent for a whole agent run, so a cached one must have this long left.
+#: Discovery runs inside a request, so its retries share this one deadline.
+DISCOVERY_TIMEOUT_SECONDS = 10
+#: The token is sent for a whole agent run. A cached one is dropped this long before it
+#: expires, or at half its life if that is sooner.
 TOKEN_REFRESH_MARGIN_SECONDS = 300
-#: Discovery runs inside a request, so it gets one retry and a short timeout.
-_DISCOVERY_CLIENT_CONFIG = AsyncClientConfig(max_retries=1, timeout_in_seconds=10.0)
 
 # Inline runs use one event loop per thread, so threads share both caches.
 _LOCK = threading.RLock()
@@ -60,7 +60,7 @@ _DISCOVERED_PARAMS: TTLCache[str, _CrossAppFlowParams] = TTLCache(
 
 
 class _TokenCache(TLRUCache):
-    """Token cache that threads can share."""
+    """Token cache that locks the get and set ``XAATokenExchange`` uses."""
 
     def __getitem__(self, key: Any) -> Any:
         with _LOCK:
@@ -77,6 +77,11 @@ def clear_caches() -> None:
     _token_exchange.cache_clear()
 
 
+def _reuse_seconds(ttl: float) -> float:
+    """Return how long a token with ``ttl`` seconds left is served from the cache."""
+    return ttl - min(TOKEN_REFRESH_MARGIN_SECONDS, ttl / 2)
+
+
 @functools.lru_cache(maxsize=1)
 def _token_exchange() -> XAATokenExchange:
     """Return the one exchange of this process, so requests share its token cache."""
@@ -89,9 +94,7 @@ def _token_exchange() -> XAATokenExchange:
     cache_manager = XAATokenExchangeCacheManager(config)
 
     def expires_at(_key: str, token: str, now: float) -> float:
-        # A token that lives under twice the margin is reused for half its life.
-        ttl = cache_manager.get_ttl_or_fallback(token)
-        return now + ttl - min(TOKEN_REFRESH_MARGIN_SECONDS, ttl / 2)
+        return now + _reuse_seconds(cache_manager.get_ttl_or_fallback(token))
 
     return get_token_exchange(config, _TokenCache(config.cache_max_size, ttu=expires_at))
 
@@ -136,10 +139,10 @@ async def _xaa_params(mcp_config: MCPConfig, mcp_server_url: str) -> _CrossAppFl
     with _LOCK:
         params = _DISCOVERED_PARAMS.get(metadata_url)
     if params is None:
-        http_client = get_retriable_async_http_client(async_client_config=_DISCOVERY_CLIENT_CONFIG)
         try:
-            params = await fetch_xaa_params(metadata_url, http_client)
-        except (RuntimeError, ValueError, KeyError) as exc:
+            async with asyncio.timeout(DISCOVERY_TIMEOUT_SECONDS):
+                params = await fetch_xaa_params(metadata_url)
+        except Exception as exc:
             raise RuntimeError(
                 f"MCP_USE_XAA could not read the MCP server's XAA parameters from {metadata_url} "
                 f"({type(exc).__name__}: {exc}). Set the MCP_XAA_* settings on the agent to "

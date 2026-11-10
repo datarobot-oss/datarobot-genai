@@ -16,6 +16,7 @@ import json
 import os
 import sys
 from http import HTTPStatus
+from types import ModuleType
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -1570,14 +1571,23 @@ class TestMCPUseXAA:
         with pytest.raises(RuntimeError, match="Okta refused"):
             await config.authenticated_server_config()
 
-    async def test_missing_dragent_extra_names_the_setting(self):
-        # GIVEN an install without the dragent extra
+    @pytest.mark.parametrize(
+        ("module", "error", "message"),
+        [
+            pytest.param(None, RuntimeError, "MCP_USE_XAA needs the dragent extra", id="missing"),
+            pytest.param(ModuleType("broken"), ImportError, "cannot import name", id="broken"),
+        ],
+    )
+    async def test_only_a_missing_module_is_reported_as_the_missing_extra(
+        self, module, error, message
+    ):
+        # GIVEN an install without the dragent extra, or with a broken one
         config = self._config(XAA_ENV, MCP_KIND_ENV["deployment"], XAA_ON)
 
-        # WHEN / THEN the error names the setting and the extra
+        # WHEN / THEN only the missing module names the setting and the extra
         with (
-            patch.dict(sys.modules, {"datarobot_genai.dragent.mcp_xaa": None}),
-            pytest.raises(RuntimeError, match=r"MCP_USE_XAA needs the dragent extra"),
+            patch.dict(sys.modules, {"datarobot_genai.dragent.mcp_xaa": module}),
+            pytest.raises(error, match=message),
         ):
             await config.authenticated_server_config()
 
@@ -1593,8 +1603,8 @@ class TestMCPUseXAA:
         # THEN the log says once that the API token is still sent
         warnings = [record.message for record in caplog.records if "MCP_USE_XAA" in record.message]
         assert warnings == [
-            "MCP_USE_XAA applies only to MCP_DEPLOYMENT_ID. "
-            f"The {kind} MCP server still gets the DataRobot API token."
+            f"MCP_USE_XAA applies only to MCP_DEPLOYMENT_ID. The {kind} MCP server is called "
+            "as before, with the DataRobot API token if one is set."
         ]
 
     def test_a_value_that_is_not_a_boolean_is_rejected(self):

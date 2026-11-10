@@ -98,6 +98,7 @@ async def mcp_tools_context(
     forwarded_headers : dict[str, str] | None
         Forwarded headers, e.g. x-datarobot-api-key to use for MCP authentication
     """
+    # A failed XAA exchange (MCP_USE_XAA) raises here and fails the request.
     server_config = await mcp_config.authenticated_server_config()
 
     if not server_config:
