@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from fastmcp.tools.tool import Tool
@@ -25,11 +26,16 @@ from datarobot_genai.drmcpbase.dynamic_tools.external_tool import _external_tool
 logger = logging.getLogger(__name__)
 
 
-async def register_external_tool(config: ExternalToolRegistrationConfig, **kwargs: Any) -> Tool:
+async def register_external_tool(
+    config: ExternalToolRegistrationConfig,
+    auth_headers: Callable[[], dict[str, str]] | None = None,
+    **kwargs: Any,
+) -> Tool:
     """Create and register a generic HTTP tool in the MCP server.
 
     Args:
         config: ExternalToolRegistrationConfig object containing all tool parameters.
+        auth_headers: Returns auth headers for the current call. They replace the config's.
         **kwargs: Additional keyword arguments to pass to tools registration.
 
     Returns
@@ -39,6 +45,7 @@ async def register_external_tool(config: ExternalToolRegistrationConfig, **kwarg
     external_tool_callable = _external_tool_callable_factory(
         config,
         allow_empty=get_config().mcp_server_tool_registration_allow_empty_schema,
+        auth_headers=auth_headers,
     )
 
     registered_tool = await register_tools(

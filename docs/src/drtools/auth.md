@@ -26,6 +26,7 @@ Credentials are defined in `datarobot_genai.drtools.core.credentials.ToolsAuthCr
 | Secret | Header examples |
 |---|---|
 | DataRobot API token | `Authorization: Bearer <token>`, `x-datarobot-api-token` |
+| External identity provider token (for example Okta) | `x-datarobot-external-access-token`. Tools send it to DataRobot as `Authorization: Bearer`. |
 | Tavily | `x-tavily-api-key` |
 | Perplexity | `x-perplexity-api-key` |
 | OAuth fallback | `x-datarobot-<provider>-access-token` |

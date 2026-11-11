@@ -87,6 +87,7 @@ class ExternalToolRegistrationConfig(BaseModel):
 def _external_tool_callable_factory(
     spec: ExternalToolRegistrationConfig,
     allow_empty: bool = False,
+    auth_headers: Callable[[], dict[str, str]] | None = None,
 ) -> Callable[[Any], Coroutine[Any, Any, ToolResult]]:
     """Dynamically creates an async callable that makes HTTP requests
     based on the given spec. This callable is the execution logic of the
@@ -95,6 +96,8 @@ def _external_tool_callable_factory(
     Args:
         spec: Configuration specifying how to make the HTTP request.
         allow_empty: Whether to allow tools with no input parameters.
+        auth_headers: Returns auth headers for the current call. They replace the spec's
+            headers of the same name.
 
     Returns
     -------
@@ -114,6 +117,10 @@ def _external_tool_callable_factory(
         data = request_input.get("data")
         json = request_input.get("json")
         headers = await get_outbound_headers(spec)
+        if auth_headers:
+            call_auth = auth_headers()
+            replaced = {name.lower() for name in call_auth}
+            headers = {k: v for k, v in headers.items() if k.lower() not in replaced} | call_auth
 
         # Build full URL with path params
         url = urljoin(spec.base_url, spec.endpoint.format(**path_params))

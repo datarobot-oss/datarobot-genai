@@ -24,6 +24,7 @@ from datarobot.models.genai.agent.auth import ToolAuth
 from datarobot_genai.core.utils.auth import AsyncOAuthTokenProvider
 from datarobot_genai.core.utils.auth import AuthContextHeaderHandler
 from datarobot_genai.core.utils.auth import DRAppCtx
+from datarobot_genai.drmcputils.constants import EXTERNAL_ACCESS_TOKEN_HEADER
 from datarobot_genai.drmcputils.constants import HEADER_TOKEN_CANDIDATE_NAMES
 from datarobot_genai.drmcputils.credentials import AuthResolutionStrategy
 from datarobot_genai.drmcputils.credentials import get_credentials
@@ -143,6 +144,12 @@ def resolve_datarobot_token() -> str | None:
         return _extract_token_from_headers_with_fallback(_safe_request_headers())
 
     return creds.datarobot.datarobot_api_token or None
+
+
+def is_external_access_token(token: str) -> bool:
+    """Tell whether ``token`` is the caller's IdP token from the request headers."""
+    idp_token = _safe_request_headers().get(EXTERNAL_ACCESS_TOKEN_HEADER, "")
+    return _parse_optional_bearer_token(idp_token) == token
 
 
 def resolve_secret(header_name: str, config_value: str) -> str | None:

@@ -31,11 +31,14 @@ WORKLOAD_TERMINAL_FAILURE_STATUS = "errored"
 
 REPLACEMENT_STRATEGIES: tuple[str, ...] = ("rolling",)
 
+# Carries the caller's IdP (e.g. Okta) access token, validated by the DataRobot API gateway.
+EXTERNAL_ACCESS_TOKEN_HEADER = "x-datarobot-external-access-token"
+
 # Header names to check for authorization tokens (in order of preference)
 HEADER_TOKEN_CANDIDATE_NAMES = [
     "x-datarobot-authorization",
     "x-datarobot-api-key",
-    "x-datarobot-external-access-token",
+    EXTERNAL_ACCESS_TOKEN_HEADER,
     "x-datarobot-api-token",
     "authorization",
 ]

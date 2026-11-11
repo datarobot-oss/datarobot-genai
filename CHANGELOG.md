@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.5 - 2026-11-10
+- `drmcp`: Fixed tools that call DataRobot through the Python SDK sending JWTs, such as the
+  caller's external identity provider token (from `x-datarobot-external-access-token`) or a
+  service token, as `Token`, which DataRobot rejects. They now send every token as
+  `Authorization: Bearer`, which DataRobot also accepts for API keys.
+- `drmcp`: Changed dynamic deployment tools to authenticate a call with the caller's external
+  identity provider token when the request uses one. Before, every call used the token captured
+  at registration. Calls made with any other token still do.
+
 ## 0.31.4 - 2026-11-10
 - `drmcp`: Fixed the MCP server exiting at startup when DataRobot rejected its API key (HTTP 401
   or 403), for example after the key's owner was deactivated. It logs one warning, skips dynamic

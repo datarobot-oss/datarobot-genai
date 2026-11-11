@@ -44,7 +44,7 @@ class TestRequestUserDrSdk:
             assert sdk is dr
 
         mock_client_configuration.assert_called_once_with(
-            token="header-token", endpoint="https://test.datarobot.com/api/v2"
+            token="header-token", endpoint="https://test.datarobot.com/api/v2", token_type="Bearer"
         )
 
     @patch(f"{_MODULE}.get_credentials")
@@ -73,7 +73,7 @@ class TestRequestUserDrSdk:
             assert sdk is dr
 
         mock_client_configuration.assert_called_once_with(
-            token="env-api-token", endpoint="https://app.datarobot.com/api/v2"
+            token="env-api-token", endpoint="https://app.datarobot.com/api/v2", token_type="Bearer"
         )
 
     @patch(f"{_MODULE}.client_configuration")
@@ -136,5 +136,7 @@ class TestRequestUserDrSdk:
             pass
 
         mock_client_configuration.assert_called_once_with(
-            token="auth-context-api-key", endpoint="https://app.datarobot.com/api/v2"
+            token="auth-context-api-key",
+            endpoint="https://app.datarobot.com/api/v2",
+            token_type="Bearer",
         )
