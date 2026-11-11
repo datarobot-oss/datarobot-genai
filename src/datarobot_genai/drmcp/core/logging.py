@@ -64,7 +64,9 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def _log_error(logger: logging.Logger, func_name: str, error: Exception, **kwargs: Any) -> str:
     """Log errors in a consistent format."""
-    error_msg = f"{type(error).__name__}: {str(error)}"
+    # Redacted here because the log formatter covers neither the OTel log export nor the
+    # return value, which goes to the MCP client.
+    error_msg = f"{type(error).__name__}: {redact_secrets(str(error))}"
     logger.error(f"Error in {func_name}: {error_msg}")
     logger.debug(f"Full traceback: {traceback.format_exc()}")
     logger.debug(f"Function arguments: {kwargs}")
@@ -73,7 +75,7 @@ def _log_error(logger: logging.Logger, func_name: str, error: Exception, **kwarg
 
 def _mcp_message_for_dr_tool_error(e: DRToolError) -> str:
     """Format drtools ToolError for fastmcp (kind prefix, no duplicate wrapping)."""
-    return f"[{e.kind.value}] {e.message}"
+    return f"[{e.kind.value}] {redact_secrets(e.message)}"
 
 
 def _kind_for_wrapped_exception(exc: Exception) -> ToolErrorKind:
@@ -111,6 +113,9 @@ def log_execution(func: F) -> F:
             return result
         except FastMCPToolError as e:
             _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)
+            message = redact_secrets(str(e))
+            if message != str(e):
+                raise FastMCPToolError(message) from e
             raise
         except DRToolError as e:
             _log_error(logger, func.__name__, e, args=args, kwargs=kwargs)

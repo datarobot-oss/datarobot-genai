@@ -21,6 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from datarobot.errors import ClientError as DataRobotAPIClientError
 from fastmcp import FastMCP
 from fastmcp.prompts import Prompt
 from fastmcp.resources import Resource
@@ -251,22 +252,36 @@ class DataRobotMCPServer:
                     "statically registered items."
                 )
             else:
-                if self._config.mcp_server_register_dynamic_tools_on_startup:
-                    self._logger.info("Registering dynamic tools from deployments...")
-                    asyncio.run(register_tools_of_datarobot_deployments())
-
-                if self._config.mcp_server_register_dynamic_prompts_on_startup:
-                    self._logger.info("Registering dynamic prompts from prompt management...")
-                    asyncio.run(register_prompts_from_datarobot_prompt_management())
-
                 try:
-                    linear_manager = LineageManager(self._mcp)
-                    asyncio.run(linear_manager.sync_mcp_tools())
-                    asyncio.run(linear_manager.sync_mcp_prompts())
-                    self._logger.info("Sync with MCP lineage")
-                except LRSEnvVarIsNotSetError as error:
-                    error_message = f"MCP item metadata is not sync. {str(error)}"
-                    self._logger.warning(error_message)
+                    if self._config.mcp_server_register_dynamic_tools_on_startup:
+                        step = "dynamic tool registration"
+                        self._logger.info("Registering dynamic tools from deployments...")
+                        asyncio.run(register_tools_of_datarobot_deployments())
+
+                    if self._config.mcp_server_register_dynamic_prompts_on_startup:
+                        step = "dynamic prompt registration"
+                        self._logger.info("Registering dynamic prompts from prompt management...")
+                        asyncio.run(register_prompts_from_datarobot_prompt_management())
+
+                    step = "MCP lineage sync"
+                    try:
+                        linear_manager = LineageManager(self._mcp)
+                        asyncio.run(linear_manager.sync_mcp_tools())
+                        asyncio.run(linear_manager.sync_mcp_prompts())
+                        self._logger.info("Sync with MCP lineage")
+                    except LRSEnvVarIsNotSetError as error:
+                        error_message = f"MCP item metadata is not sync. {str(error)}"
+                        self._logger.warning(error_message)
+                except DataRobotAPIClientError as error:
+                    if error.status_code not in (401, 403):
+                        raise
+                    # The SDK's 401 message contains the key, so only the status is logged.
+                    self._logger.warning(
+                        f"DataRobot returned HTTP {error.status_code} during {step}. This "
+                        "server's API key may be invalid, or its owner deactivated or without "
+                        "access. Skipping the rest of dynamic tool/prompt registration and MCP "
+                        "lineage sync."
+                    )
 
             # Execute pre-server start actions
             asyncio.run(self._lifecycle.pre_server_start(self._mcp))

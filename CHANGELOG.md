@@ -13,6 +13,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   identity provider token when the request uses one. Before, every call used the token captured
   at registration. Calls made with any other token still do.
 
+## 0.31.4 - 2026-11-10
+- `drmcp`: Fixed the MCP server exiting at startup when DataRobot rejected its API key (HTTP 401
+  or 403), for example after the key's owner was deactivated. It logs one warning, skips dynamic
+  tool and prompt registration and the MCP lineage sync, and serves the items registered so far.
+- `drmcputils`: Added log redaction for `Token <key>` Authorization values and for the DataRobot
+  SDK's authentication error, which quotes the API key.
+- `drmcp`: Fixed tool error messages returned to the MCP client carrying secrets, such as the
+  token quoted in the DataRobot SDK's authentication error. They are redacted the same way as
+  the logs, which also masks email addresses.
+- `drmcp`: Fixed the same secrets reaching OpenTelemetry in the spans `drmcp` creates for a failed
+  request or tool call (status, exception message and stack trace) and in the tool error log.
+
 ## 0.31.3 - 2026-10-30
 - `dragent`: You can now choose where agents read agent cards from. Nothing changes unless you set
   one of the two new settings.

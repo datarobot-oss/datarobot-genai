@@ -19,6 +19,7 @@ from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+from datarobot.errors import ClientError
 from fastmcp.exceptions import ToolError as FastMCPToolError
 from opentelemetry import baggage
 from opentelemetry import context as otel_context
@@ -29,6 +30,7 @@ from opentelemetry.trace import Span
 from opentelemetry.trace import SpanContext
 
 from datarobot_genai.drmcp.core import telemetry
+from datarobot_genai.drmcp.core.logging import log_execution
 from datarobot_genai.drmcp.core.telemetry import OpenTelemetryMiddleware
 from datarobot_genai.drmcp.core.telemetry import initialize_telemetry as _real_initialize_telemetry
 from datarobot_genai.drmcp.core.telemetry import with_otel_context
@@ -602,20 +604,51 @@ class TestMiddlewareRecordsToolMetrics:
         assert error is boom
 
 
+@pytest.fixture
+def span_exporter(monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(
+        telemetry.trace, "get_tracer", lambda *a, **k: provider.get_tracer(__name__)
+    )
+    return exporter
+
+
+@pytest.mark.asyncio
+async def test_failed_tool_call_spans_carry_no_secrets(
+    span_exporter: InMemorySpanExporter,
+) -> None:
+    # GIVEN a tool that fails with the DataRobot SDK's 401 error, which quotes the key
+    key = "NjM4someToken-value_here"
+
+    @log_execution
+    @telemetry.trace_execution()
+    async def deployment_get_list() -> None:
+        raise ClientError(f'Unable to authenticate - the provided token of "{key}"', 401)
+
+    context = Mock()
+    context.message.name = "deployment_get_list"
+    context.message.arguments = {}
+
+    # WHEN the call fails through the tool's span and the middleware's span
+    with patch.object(telemetry, "get_config", return_value=Mock(otel_attributes=None)):
+        with pytest.raises(FastMCPToolError):
+            await OpenTelemetryMiddleware().on_call_tool(context, lambda _: deployment_get_list())
+
+    # THEN each span records the error once, without the key
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+    for span in spans:
+        assert "Unable to authenticate" in span.status.description
+        assert [event.name for event in span.events] == ["exception"]
+        assert key not in span.to_json()
+
+
 class TestOnCallToolReadsAgentNameFromBaggage:
     """The tool span reads ``gen_ai.agent.name`` back out of Baggage, already
     attached by ``with_otel_context`` before this middleware's span opens.
     """
-
-    @pytest.fixture
-    def span_exporter(self, monkeypatch: pytest.MonkeyPatch) -> InMemorySpanExporter:
-        exporter = InMemorySpanExporter()
-        provider = TracerProvider()
-        provider.add_span_processor(SimpleSpanProcessor(exporter))
-        monkeypatch.setattr(
-            telemetry.trace, "get_tracer", lambda *a, **k: provider.get_tracer(__name__)
-        )
-        return exporter
 
     @pytest.fixture
     def middleware(self, span_exporter: InMemorySpanExporter) -> OpenTelemetryMiddleware:
