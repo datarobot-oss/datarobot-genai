@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import time
+import traceback
 from collections.abc import Callable
 from collections.abc import Iterator
 from collections.abc import Mapping
@@ -47,6 +48,8 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.semconv.attributes.exception_attributes import EXCEPTION_MESSAGE
+from opentelemetry.semconv.attributes.exception_attributes import EXCEPTION_STACKTRACE
 from opentelemetry.trace import Span
 from opentelemetry.trace import SpanContext
 from opentelemetry.trace import SpanKind
@@ -61,6 +64,7 @@ from starlette.responses import Response
 from datarobot_genai.drmcpbase.datarobot_otel_metrics import bootstrap_metrics_provider
 from datarobot_genai.drmcpbase.tool_metrics import record_tool_call
 from datarobot_genai.drmcputils.credentials import get_credentials
+from datarobot_genai.drmcputils.log_redaction import redact_secrets
 
 from .config import get_config
 
@@ -81,6 +85,20 @@ tracer = trace.get_tracer(__name__)
 _INSTRUMENTED = False
 
 
+def _record_error(span: Span, error: Exception) -> None:
+    """Mark the span as failed, with secrets redacted from the error text and stack trace."""
+    message = redact_secrets(str(error))
+    span.set_attribute("error.type", type(error).__name__)
+    span.set_status(Status(StatusCode.ERROR, message))
+    span.record_exception(
+        error,
+        attributes={
+            EXCEPTION_MESSAGE: message,
+            EXCEPTION_STACKTRACE: redact_secrets("".join(traceback.format_exception(error))),
+        },
+    )
+
+
 @contextmanager
 def with_otel_context(carrier: Mapping[str, str]) -> Iterator[Any]:
     ctx = extract(carrier)
@@ -99,15 +117,16 @@ class OpenTelemetryMiddleware(Middleware):
         with tracer.start_as_current_span(
             f"mcp.request.{context.method}",
             kind=SpanKind.SERVER,
+            # Off because the SDK records the raw error text. _record_error redacts it.
+            record_exception=False,
+            set_status_on_exception=False,
         ) as span:
             span.set_attribute("mcp.method.name", context.method or "")
             try:
                 result = await call_next(context)
                 span.set_status(Status(StatusCode.OK))
             except Exception as e:
-                span.set_attribute("error.type", type(e).__name__)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
+                _record_error(span, e)
                 raise
             return result
 
@@ -119,6 +138,8 @@ class OpenTelemetryMiddleware(Middleware):
         with self.tracer.start_as_current_span(
             f"tool.{tool_name}",
             kind=SpanKind.SERVER,
+            record_exception=False,
+            set_status_on_exception=False,
         ) as span:
             span.set_attributes(
                 {
@@ -141,9 +162,7 @@ class OpenTelemetryMiddleware(Middleware):
                 return result
 
             except Exception as e:
-                span.set_attribute("error.type", type(e).__name__)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
+                _record_error(span, e)
                 record_tool_call(tool_name, time.perf_counter() - started, e)
                 raise
 
@@ -453,9 +472,7 @@ def trace_execution(trace_name: str | None = None, trace_type: str = "tool") -> 
                 span.set_status(Status(StatusCode.OK))
                 return result
             except Exception as e:
-                span.set_attribute("error.type", type(e).__name__)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
+                _record_error(span, e)
                 raise e
             finally:
                 span.end()
@@ -468,9 +485,7 @@ def trace_execution(trace_name: str | None = None, trace_type: str = "tool") -> 
                 span.set_status(Status(StatusCode.OK))
                 return result
             except Exception as e:
-                span.set_attribute("error.type", type(e).__name__)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
+                _record_error(span, e)
                 raise e
             finally:
                 span.end()

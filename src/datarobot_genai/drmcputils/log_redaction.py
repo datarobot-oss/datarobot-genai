@@ -40,6 +40,12 @@ SECRET_PATTERNS = [
     r"(?i:\b(?:bearer|basic))\s+"
     r"(?:(?=\S*[0-9+/=])[A-Za-z0-9._~+/=-]{6,}"
     r"|(?=\S*[a-z])(?=\S*[A-Z])[A-Za-z0-9._~+/=-]{10,})",
+    # The DataRobot SDK's header, "Authorization: Token <key>".  Anchored on the header
+    # name, because "token <value>" alone is common in LLM logs ("token limit=128000").
+    r"(?i:\bauthorization['\"]?\s*[:=]\s*['\"]?token)\s+\S+",
+    # The DataRobot SDK's 401 message quotes the key: provided token of "<key>".
+    # The quotes are escaped when the message is JSON-encoded.
+    r'(?i:\btoken of )\\?"[^"\\]+\\?"',
     # Assignments of secret-shaped keys, incl. prefixed forms: token=…, api_key: …,
     # DATAROBOT_API_TOKEN=…, client_secret=…, X-DataRobot-Authorization: …
     # The stem must END the key (``tokens=1500`` survives) and the value must be
