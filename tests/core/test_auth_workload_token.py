@@ -99,12 +99,12 @@ def _token_ok(token: str = "tok-1", expires_in: int = 7 * 24 * 3600) -> dict:
     return {"access_token": token, "token_type": "bearer", "expires_in": expires_in}
 
 
-def _source(clock: FakeClock, **overrides) -> wt.WorkloadTokenSource:
+def _source(clock: FakeClock, *, audience=None, scopes=(), **overrides) -> wt.WorkloadTokenSource:
     config = wt.WorkloadIdentityConfig.from_env()
     assert config is not None
     for k, v in overrides.items():
         object.__setattr__(config, k, v)
-    src = wt.WorkloadTokenSource(config, clock=clock)
+    src = wt.WorkloadTokenSource(config, audience=audience, scopes=scopes, clock=clock)
     # No background thread in unit tests; refreshes are driven explicitly.
     src._thread = object()  # type: ignore[assignment]
     return src
@@ -127,7 +127,11 @@ class TestConfigFromEnv:
         identity_env.setenv(wt.ASSERTION_AUDIENCE_ENV, "https://issuer/")
         config = wt.WorkloadIdentityConfig.from_env()
         assert config is not None
-        assert (config.client_id, config.key_id, config.audience) == ("wl-123", "kid-1", PUBLIC_API)
+        assert (config.client_id, config.key_id, config.api_endpoint) == (
+            "wl-123",
+            "kid-1",
+            PUBLIC_API,
+        )
         assert config.token_endpoint == TOKEN_URL
         assert config.assertion_audience == "https://issuer/"
 
@@ -445,7 +449,7 @@ class TestModeDetection:
 class TestFederation:
     @responses.activate
     def test_exchanges_projected_token_per_rfc8693(self, federation_env):
-        # GIVEN Hydra-style discovery (no RFC 8414) and the bridge's token endpoint
+        # GIVEN OIDC discovery only (no RFC 8414) and the bridge's token endpoint
         responses.get(RFC8414, status=404)
         responses.get(DISCOVERY, json={"token_endpoint": TOKEN_URL})
         responses.post(TOKEN_URL, json=_token_ok("fed-1"))
@@ -488,6 +492,53 @@ class TestFederation:
         with caplog.at_level(logging.DEBUG):
             assert _source(FakeClock()).token() is None
         assert "cannot read DATAROBOT_WORKLOAD_TOKEN_FILE" in caplog.text
+
+
+class TestAudienceAndScopes:
+    @responses.activate
+    def test_audience_and_scopes_in_client_credentials(self, identity_env):
+        # GIVEN a source with its own audience and scopes
+        _no_discovery(identity_env)
+        responses.post(TOKEN_URL, json=_token_ok())
+        src = _source(FakeClock(), audience="https://api.other/", scopes=["read", "write", "read"])
+        # WHEN a token is requested
+        src.token()
+        # THEN both are sent, scopes space-separated and de-duplicated
+        form = _form(responses.calls[-1])
+        assert form["audience"] == "https://api.other/"
+        assert form["scope"] == "read write"
+
+    @responses.activate
+    def test_scopes_in_token_exchange(self, federation_env):
+        federation_env.setenv(wt.TOKEN_ENDPOINT_ENV, TOKEN_URL)
+        responses.post(TOKEN_URL, json=_token_ok())
+        _source(FakeClock(), scopes=("agents:read",)).token()
+        form = _form(responses.calls[-1])
+        assert form["scope"] == "agents:read"
+        assert form["audience"] == PUBLIC_API
+
+    @responses.activate
+    def test_audience_override_keeps_discovery_on_api_endpoint(self, identity_env):
+        # GIVEN discovery off the public API endpoint and a different audience
+        identity_env.delenv(wt.ASSERTION_AUDIENCE_ENV, raising=False)
+        responses.get(RFC8414, status=404)
+        responses.get(DISCOVERY, json={"token_endpoint": TOKEN_URL})
+        responses.post(TOKEN_URL, json=_token_ok())
+        _source(FakeClock(), audience="https://api.other/").token()
+        # THEN discovery still uses the endpoint, and only the audience changes
+        assert responses.calls[0].request.url == RFC8414
+        form = _form(responses.calls[-1])
+        assert form["audience"] == "https://api.other/"
+        # and the assertion aud stays the token endpoint
+        claims = jwt.decode(form["client_assertion"], options={"verify_signature": False})
+        assert claims["aud"] == TOKEN_URL
+
+    @pytest.mark.parametrize("scopes", ["read write", ["has space"], [""], ['quo"te'], ["tab\t"]])
+    def test_invalid_scopes_rejected(self, identity_env, scopes):
+        config = wt.WorkloadIdentityConfig.from_env()
+        assert config is not None
+        with pytest.raises((TypeError, ValueError)):
+            wt.WorkloadTokenSource(config, scopes=scopes)
 
 
 class TestDiscoveryAndOverrides:

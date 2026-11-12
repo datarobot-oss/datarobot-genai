@@ -16,7 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     doesn't fit the key (type or EC curve), disables workload identity with an error.
 
   The client id is `DATAROBOT_CLIENT_ID`, or `WORKLOAD_ID` when that is unset. The requested
-  audience is `DATAROBOT_PUBLIC_API_ENDPOINT`. One process-wide source refreshes the token in
+  audience defaults to `DATAROBOT_PUBLIC_API_ENDPOINT`. `WorkloadTokenSource(audience=..., scopes=[...])`
+  overrides the audience and requests scopes (sent as `scope`, space-separated); each source holds
+  one token for its audience and scopes. One process-wide source refreshes the token in
   the background and keeps the current one through failures until it expires. It refreshes every
   `DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS` (default 3600), or at 80% of the token's lifetime when
   that comes first.

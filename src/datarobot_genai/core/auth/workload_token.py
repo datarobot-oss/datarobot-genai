@@ -24,7 +24,9 @@ Two auth modes, picked from env:
   with ``DATAROBOT_CLIENT_KEY_ALG`` (default RS256; PyJWT + cryptography).
 
 The client id is ``DATAROBOT_CLIENT_ID`` (``WORKLOAD_ID`` as a fallback). The
-token endpoint comes from overrides or discovery off ``DATAROBOT_PUBLIC_API_ENDPOINT``.
+token endpoint comes from overrides or discovery off ``DATAROBOT_PUBLIC_API_ENDPOINT``,
+which is also the default requested audience. ``WorkloadTokenSource`` takes an
+``audience`` override and ``scopes``; each source holds one token for that pair.
 
 The token refreshes every ``DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS`` (default 3600),
 or sooner when the token's lifetime is shorter.
@@ -47,6 +49,7 @@ from collections.abc import Callable
 from collections.abc import Generator
 from collections.abc import Mapping
 from collections.abc import MutableMapping
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field
 from enum import StrEnum
@@ -104,7 +107,7 @@ class WorkloadTokenError(Exception):
 class WorkloadIdentityConfig:
     mode: AuthMode
     client_id: str
-    audience: str
+    api_endpoint: str
     token_file: str = ""
     private_key: str = field(default="", repr=False)
     key_id: str = ""
@@ -119,11 +122,11 @@ class WorkloadIdentityConfig:
         """Read the workload identity env; ``None`` when it is absent or incomplete."""
         env = os.environ if environ is None else environ
         client_id = (env.get(CLIENT_ID_ENV) or env.get(WORKLOAD_ID_ENV) or "").strip()
-        audience = env.get(PUBLIC_API_ENDPOINT_ENV, "").strip()
+        api_endpoint = env.get(PUBLIC_API_ENDPOINT_ENV, "").strip()
         token_file = env.get(WORKLOAD_TOKEN_FILE_ENV, "").strip()
         private_key = env.get(PRIVATE_KEY_ENV, "").strip()
         key_id = env.get(KEY_ID_ENV, "").strip()
-        if not (token_file or private_key) or not (client_id and audience):
+        if not (token_file or private_key) or not (client_id and api_endpoint):
             return None
         if token_file:
             mode = AuthMode.FEDERATION
@@ -138,7 +141,7 @@ class WorkloadIdentityConfig:
         return cls(
             mode=mode,
             client_id=client_id,
-            audience=audience,
+            api_endpoint=api_endpoint,
             token_file=token_file,
             private_key=private_key,
             key_id=key_id,
@@ -154,7 +157,7 @@ class WorkloadIdentityConfig:
         if self.discovery_url:
             return [self.discovery_url]
         # Strip a literal /api/v2; urljoin("../..") breaks path-prefixed installs.
-        base = self.audience.rstrip("/")
+        base = self.api_endpoint.rstrip("/")
         if base.endswith(_API_V2_SUFFIX):
             base = base[: -len(_API_V2_SUFFIX)]
         parts = urlsplit(base)
@@ -204,6 +207,20 @@ def _load_signing_key(private_key: str, alg: str) -> object:
     return key
 
 
+def _scope_param(scopes: Sequence[str]) -> str:
+    """RFC 6749 ``scope``: space-separated, order kept, duplicates dropped."""
+    if isinstance(scopes, str):
+        raise TypeError("scopes must be a sequence of strings, not a str")
+    out: list[str] = []
+    for scope in scopes:
+        # scope-token = 1*( %x21 / %x23-5B / %x5D-7E )
+        if not scope or any(not 0x21 <= ord(c) <= 0x7E or c in '"\\' for c in scope):
+            raise ValueError(f"invalid OAuth scope: {scope!r}")
+        if scope not in out:
+            out.append(scope)
+    return " ".join(out)
+
+
 class WorkloadTokenSource:
     """Holds a workload token and refreshes it in a background thread.
 
@@ -216,10 +233,18 @@ class WorkloadTokenSource:
         config: WorkloadIdentityConfig,
         *,
         session: requests.Session | None = None,
+        audience: str | None = None,
+        scopes: Sequence[str] = (),
         refresh_interval: float | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        """Fix ``audience`` and ``scopes`` per source, so each source caches one token.
+
+        ``audience`` defaults to ``config.api_endpoint``; no ``scopes`` sends no ``scope``.
+        """
         self._config = config
+        self._audience = (audience or config.api_endpoint).strip()
+        self._scope = _scope_param(scopes)
         self._http = session or requests.Session()
         self._refresh_interval = refresh_interval or config.refresh_interval
         # Monotonic: scheduling is relative to expires_in, so wall-clock steps must not skew it.
@@ -367,20 +392,24 @@ class WorkloadTokenSource:
     def _request_form(self) -> dict[str, str]:
         if self._config.mode is AuthMode.FEDERATION:
             # The bridge refuses client credentials and 'resource'; the target goes in 'audience'.
-            return {
+            form = {
                 "grant_type": _TOKEN_EXCHANGE_GRANT,
                 "subject_token": self._read_subject_token(),
                 "subject_token_type": _JWT_TOKEN_TYPE,
                 "client_id": self._config.client_id,
-                "audience": self._config.audience,
+                "audience": self._audience,
             }
-        return {
-            "grant_type": "client_credentials",
-            "client_id": self._config.client_id,
-            "client_assertion_type": _JWT_BEARER_ASSERTION,
-            "client_assertion": self._client_assertion(),
-            "audience": self._config.audience,
-        }
+        else:
+            form = {
+                "grant_type": "client_credentials",
+                "client_id": self._config.client_id,
+                "client_assertion_type": _JWT_BEARER_ASSERTION,
+                "client_assertion": self._client_assertion(),
+                "audience": self._audience,
+            }
+        if self._scope:
+            form["scope"] = self._scope
+        return form
 
     def _request_token(self) -> tuple[str, float]:
         form = self._request_form()
