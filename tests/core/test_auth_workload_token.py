@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from urllib.parse import parse_qs
 
 import httpx
@@ -201,7 +202,7 @@ class TestConfigFromEnv:
 class TestTokenRequest:
     @responses.activate
     def test_discovers_and_requests_per_spec(self, identity_env, rsa_key):
-        # GIVEN no RFC 8414 metadata (Hydra), OIDC discovery and a token endpoint
+        # GIVEN no RFC 8414 metadata, OIDC discovery and a token endpoint
         responses.get(RFC8414, status=404)
         responses.get(DISCOVERY, json={"token_endpoint": TOKEN_URL})
         responses.post(TOKEN_URL, json=_token_ok())
@@ -233,6 +234,8 @@ class TestTokenRequest:
         )
         assert claims["iss"] == claims["sub"] == "wl-123"
         assert claims["exp"] - claims["iat"] <= 300
+        # iat is wall-clock time, not the injected monotonic clock
+        assert abs(claims["iat"] - time.time()) < 60
         assert claims["jti"]
 
     @responses.activate

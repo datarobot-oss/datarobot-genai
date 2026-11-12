@@ -217,11 +217,12 @@ class WorkloadTokenSource:
         *,
         session: requests.Session | None = None,
         refresh_interval: float | None = None,
-        clock: Callable[[], float] = time.time,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._config = config
         self._http = session or requests.Session()
         self._refresh_interval = refresh_interval or config.refresh_interval
+        # Monotonic: scheduling is relative to expires_in, so wall-clock steps must not skew it.
         self._clock = clock
         self._signing_key = (
             _load_signing_key(config.private_key, config.key_alg)
@@ -332,7 +333,8 @@ class WorkloadTokenSource:
     def _client_assertion(self) -> str:
         import jwt
 
-        now = int(self._clock())
+        # iat/exp are absolute claims, so these need wall-clock time.
+        now = int(time.time())
         claims = {
             "iss": self._config.client_id,
             "sub": self._config.client_id,
