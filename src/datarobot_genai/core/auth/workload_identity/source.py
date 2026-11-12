@@ -12,84 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Workload identity token requester.
-
-Two auth modes, picked from env:
-
-* federation: ``DATAROBOT_WORKLOAD_TOKEN_FILE`` holds a projected Kubernetes
-  ServiceAccount token, exchanged at the auth-server token bridge (RFC 8693).
-  Preferred when both are present, since it needs no secret.
-* private_key_jwt: ``DATAROBOT_CLIENT_PRIVATE_KEY`` (PKCS#8 PEM) and
-  ``DATAROBOT_CLIENT_KEY_ID`` sign a client assertion for ``client_credentials``
-  with ``DATAROBOT_CLIENT_KEY_ALG`` (default RS256; PyJWT + cryptography).
-
-The client id is ``DATAROBOT_CLIENT_ID`` (``WORKLOAD_ID`` as a fallback). The
-token endpoint comes from overrides or discovery off ``DATAROBOT_PUBLIC_API_ENDPOINT``,
-which is also the default requested audience. ``WorkloadTokenSource`` takes an
-``audience`` override and ``scopes``; each source holds one token for that pair.
+"""Workload token requests and background refresh.
 
 The token refreshes every ``DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS`` (default 3600),
-or sooner when the token's lifetime is shorter.
-
-Transport-neutral: ``WorkloadTokenSource.token()``, plus thin ``requests`` and
-``httpx`` auth adapters. It imports nothing from datarobot_genai, so it can move
-to a shared library as is. Keys and tokens are never logged.
+or sooner when the token's lifetime is shorter. Keys and tokens are never logged.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import os
 import threading
 import time
 import uuid
-from collections.abc import AsyncGenerator
 from collections.abc import Callable
-from collections.abc import Generator
-from collections.abc import Mapping
 from collections.abc import Sequence
-from dataclasses import dataclass
-from dataclasses import field
-from enum import StrEnum
-from typing import TYPE_CHECKING
-from urllib.parse import urlsplit
 
-import httpx
 import requests
 
-if TYPE_CHECKING:
-    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+from .config import WORKLOAD_TOKEN_FILE_ENV
+from .config import AuthMode
+from .config import WorkloadIdentityConfig
+from .config import WorkloadTokenError
+from .config import load_signing_key
 
 logger = logging.getLogger(__name__)
 
-CLIENT_ID_ENV = "DATAROBOT_CLIENT_ID"
-# client_id is the workload id; used when CLIENT_ID_ENV is unset.
-WORKLOAD_ID_ENV = "WORKLOAD_ID"
-WORKLOAD_TOKEN_FILE_ENV = "DATAROBOT_WORKLOAD_TOKEN_FILE"
-PRIVATE_KEY_ENV = "DATAROBOT_CLIENT_PRIVATE_KEY"
-KEY_ID_ENV = "DATAROBOT_CLIENT_KEY_ID"
-KEY_ALG_ENV = "DATAROBOT_CLIENT_KEY_ALG"
-DEFAULT_KEY_ALG = "RS256"
-PUBLIC_API_ENDPOINT_ENV = "DATAROBOT_PUBLIC_API_ENDPOINT"
-DISCOVERY_URL_ENV = "DATAROBOT_OAUTH_DISCOVERY_URL"
-TOKEN_ENDPOINT_ENV = "DATAROBOT_OAUTH_TOKEN_ENDPOINT"
-ASSERTION_AUDIENCE_ENV = "DATAROBOT_OAUTH_CLIENT_ASSERTION_AUDIENCE"
-REFRESH_INTERVAL_ENV = "DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS"
-
-
-_API_V2_SUFFIX = "/api/v2"
 _ASSERTION_LIFETIME_SECONDS = 300
-# FIPS-approved private_key_jwt algs. EC algs pin the curve.
-_RSA_ALGS = frozenset({"RS256", "RS384", "RS512", "PS256", "PS384", "PS512"})
-_EC_ALG_CURVES = {"ES256": "secp256r1", "ES384": "secp384r1", "ES512": "secp521r1"}
 _TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"
 _JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 _JWT_BEARER_ASSERTION = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 _HTTP_TIMEOUT_SECONDS = 10.0
-# Tokens are often long-lived to ride out an outage; refreshing more often limits exposure.
-DEFAULT_REFRESH_INTERVAL_SECONDS = 3600.0
 # Refresh by this fraction of the token lifetime when that comes before the interval.
 _REFRESH_LIFETIME_FRACTION = 0.8
 _MIN_RETRY_SECONDS = 30.0
@@ -98,119 +50,6 @@ _MAX_RETRY_SECONDS = 300.0
 # so short tokens stay usable past the scheduled refresh.
 _EXPIRY_SKEW_SECONDS = 30.0
 _EXPIRY_SKEW_LIFETIME_FRACTION = 0.1
-
-
-class AuthMode(StrEnum):
-    FEDERATION = "federation"
-    PRIVATE_KEY_JWT = "private_key_jwt"
-
-
-class WorkloadTokenError(Exception):
-    """A workload token request failed. Messages never carry the key or a token."""
-
-
-@dataclass(frozen=True)
-class WorkloadIdentityConfig:
-    mode: AuthMode
-    client_id: str
-    api_endpoint: str
-    token_file: str = ""
-    private_key: str = field(default="", repr=False)
-    key_id: str = ""
-    key_alg: str = DEFAULT_KEY_ALG
-    discovery_url: str = ""
-    token_endpoint: str = ""
-    assertion_audience: str = ""
-    refresh_interval: float = DEFAULT_REFRESH_INTERVAL_SECONDS
-
-    @classmethod
-    def from_env(cls, environ: Mapping[str, str] | None = None) -> WorkloadIdentityConfig | None:
-        """Read the workload identity env; ``None`` when it is absent or incomplete."""
-        env = os.environ if environ is None else environ
-        client_id = (env.get(CLIENT_ID_ENV) or env.get(WORKLOAD_ID_ENV) or "").strip()
-        api_endpoint = env.get(PUBLIC_API_ENDPOINT_ENV, "").strip()
-        token_file = env.get(WORKLOAD_TOKEN_FILE_ENV, "").strip()
-        private_key = env.get(PRIVATE_KEY_ENV, "").strip()
-        key_id = env.get(KEY_ID_ENV, "").strip()
-        if not (token_file or private_key) or not (client_id and api_endpoint):
-            return None
-        if token_file:
-            mode = AuthMode.FEDERATION
-            if private_key:
-                logger.warning("Workload identity: both auth modes configured; using federation")
-            private_key = key_id = ""
-        else:
-            mode = AuthMode.PRIVATE_KEY_JWT
-            if not key_id:
-                logger.warning("Workload identity disabled: %s is not set", KEY_ID_ENV)
-                return None
-        return cls(
-            mode=mode,
-            client_id=client_id,
-            api_endpoint=api_endpoint,
-            token_file=token_file,
-            private_key=private_key,
-            key_id=key_id,
-            key_alg=env.get(KEY_ALG_ENV, "").strip() or DEFAULT_KEY_ALG,
-            discovery_url=env.get(DISCOVERY_URL_ENV, "").strip(),
-            token_endpoint=env.get(TOKEN_ENDPOINT_ENV, "").strip(),
-            assertion_audience=env.get(ASSERTION_AUDIENCE_ENV, "").strip(),
-            refresh_interval=_refresh_interval_from_env(env),
-        )
-
-    def discovery_urls(self) -> list[str]:
-        """Metadata URLs to try in order: the override, else RFC 8414 then OIDC."""
-        if self.discovery_url:
-            return [self.discovery_url]
-        # Strip a literal /api/v2; urljoin("../..") breaks path-prefixed installs.
-        base = self.api_endpoint.rstrip("/")
-        if base.endswith(_API_V2_SUFFIX):
-            base = base[: -len(_API_V2_SUFFIX)]
-        parts = urlsplit(base)
-        origin = f"{parts.scheme}://{parts.netloc}"
-        return [
-            f"{origin}/.well-known/oauth-authorization-server{parts.path}",
-            f"{base}/.well-known/openid-configuration",
-        ]
-
-
-def _refresh_interval_from_env(env: Mapping[str, str]) -> float:
-    raw = env.get(REFRESH_INTERVAL_ENV, "").strip()
-    if not raw:
-        return DEFAULT_REFRESH_INTERVAL_SECONDS
-    try:
-        value = float(raw)
-    except ValueError:
-        value = 0.0
-    if value > 0:
-        return value
-    logger.warning(
-        "Ignoring %s=%r; using %.0fs", REFRESH_INTERVAL_ENV, raw, DEFAULT_REFRESH_INTERVAL_SECONDS
-    )
-    return DEFAULT_REFRESH_INTERVAL_SECONDS
-
-
-def _load_signing_key(private_key: str, alg: str) -> RSAPrivateKey | EllipticCurvePrivateKey:
-    """Load the PKCS#8 PEM private key and check it fits ``alg``."""
-    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
-    from cryptography.hazmat.primitives.serialization import load_pem_private_key
-
-    if alg not in _RSA_ALGS and alg not in _EC_ALG_CURVES:
-        raise WorkloadTokenError(f"{KEY_ALG_ENV}={alg!r} is not a supported signing alg")
-    try:
-        key = load_pem_private_key(private_key.encode(), password=None)
-    except Exception:
-        # Drop the cause: some parser errors echo key material.
-        raise WorkloadTokenError(f"cannot load {PRIVATE_KEY_ENV} as a PKCS#8 PEM") from None
-    if alg in _RSA_ALGS:
-        if not isinstance(key, RSAPrivateKey):
-            raise WorkloadTokenError(f"{PRIVATE_KEY_ENV} is not an RSA key, as {alg} needs")
-    elif not isinstance(key, EllipticCurvePrivateKey) or key.curve.name != _EC_ALG_CURVES[alg]:
-        raise WorkloadTokenError(
-            f"{PRIVATE_KEY_ENV} is not an EC {_EC_ALG_CURVES[alg]} key, as {alg} needs"
-        )
-    return key
 
 
 def _scope_param(scopes: Sequence[str]) -> str:
@@ -257,7 +96,7 @@ class WorkloadTokenSource:
         # Monotonic: scheduling is relative to expires_in, so wall-clock steps must not skew it.
         self._clock = clock
         self._signing_key = (
-            _load_signing_key(config.private_key, config.key_alg)
+            load_signing_key(config.private_key, config.key_alg)
             if config.mode is AuthMode.PRIVATE_KEY_JWT
             else None
         )
@@ -461,38 +300,6 @@ def _oauth_error(resp: requests.Response) -> str:
         return str(resp.json().get("error", "unknown"))
     except ValueError:
         return "unknown"
-
-
-class WorkloadTokenAuth(requests.auth.AuthBase):
-    """Sets ``Authorization: Bearer <workload token>``; raises ``WorkloadTokenError`` if none."""
-
-    def __init__(self, source: WorkloadTokenSource) -> None:
-        self._source = source
-
-    def __call__(self, r: requests.PreparedRequest) -> requests.PreparedRequest:
-        r.headers["Authorization"] = f"Bearer {self._source.token()}"
-        return r
-
-
-class WorkloadTokenHttpxAuth(httpx.Auth):
-    """httpx ``Authorization: Bearer <workload token>`` for sync and async clients."""
-
-    def __init__(self, source: WorkloadTokenSource) -> None:
-        self._source = source
-
-    def sync_auth_flow(
-        self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response, None]:
-        request.headers["Authorization"] = f"Bearer {self._source.token()}"
-        yield request
-
-    async def async_auth_flow(
-        self, request: httpx.Request
-    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
-        # token() may block on the first fetch; keep it off the event loop.
-        token = await asyncio.to_thread(self._source.token)
-        request.headers["Authorization"] = f"Bearer {token}"
-        yield request
 
 
 _SOURCE_LOCK = threading.Lock()

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.31.6 - 2026-11-12
-- Added `datarobot_genai.core.auth.workload_token`, which obtains and refreshes a DataRobot workload
+- Added `datarobot_genai.core.auth.workload_identity`, which obtains and refreshes a DataRobot workload
   identity token. Configuration comes from env, with one of two auth modes:
   - Federation: exchanges the Kubernetes ServiceAccount token in `DATAROBOT_WORKLOAD_TOKEN_FILE`
     (RFC 8693). Takes precedence when both modes are configured.
@@ -17,8 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (default 3600) or at 80% of the token lifetime, whichever is sooner, and keeps the current token
   through failures until it expires. It accepts an `audience` override and `scopes`. `token()`
   raises `WorkloadTokenError` when no valid token is held.
-- Added `WorkloadTokenAuth` (requests) and `WorkloadTokenHttpxAuth` (httpx) to send the token as
-  `Authorization: Bearer`.
+- Added `WorkloadTokenAuth` (requests) and `WorkloadTokenHttpxAuth` (httpx), in
+  `workload_identity.auth`, to send the token as `Authorization: Bearer`.
 - Core now requires `pyjwt[crypto]`.
 
 ## 0.31.5 - 2026-11-10

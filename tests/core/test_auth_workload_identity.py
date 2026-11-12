@@ -27,7 +27,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
-from datarobot_genai.core.auth import workload_token as wt
+from datarobot_genai.core.auth import workload_identity as wt
+from datarobot_genai.core.auth.workload_identity import auth as wt_auth
+from datarobot_genai.core.auth.workload_identity import source as wt_source
 
 PUBLIC_API = "https://app.example.com/api/v2"
 DISCOVERY = "https://app.example.com/.well-known/openid-configuration"
@@ -68,9 +70,9 @@ def pem(rsa_key: rsa.RSAPrivateKey) -> str:
 def clean_env(monkeypatch):
     for var in _ENV_VARS:
         monkeypatch.delenv(var, raising=False)
-    wt._reset_workload_token_source()
+    wt_source._reset_workload_token_source()
     yield monkeypatch
-    wt._reset_workload_token_source()
+    wt_source._reset_workload_token_source()
 
 
 @pytest.fixture
@@ -778,14 +780,14 @@ class FixedToken:
 class TestAuthAdapters:
     def test_requests_auth_sets_bearer(self):
         req = requests.Request("GET", "https://x.test/", headers={"X-Other": "1"}).prepare()
-        out = wt.WorkloadTokenAuth(FixedToken("tok"))(req)  # type: ignore[arg-type]
+        out = wt_auth.WorkloadTokenAuth(FixedToken("tok"))(req)  # type: ignore[arg-type]
         assert out.headers["Authorization"] == "Bearer tok"
         assert out.headers["X-Other"] == "1"
 
     def test_requests_auth_raises_without_token(self):
         req = requests.Request("GET", "https://x.test/").prepare()
         with pytest.raises(wt.WorkloadTokenError):
-            wt.WorkloadTokenAuth(FixedToken(None))(req)  # type: ignore[arg-type]
+            wt_auth.WorkloadTokenAuth(FixedToken(None))(req)  # type: ignore[arg-type]
 
     def test_httpx_auth_sync(self):
         seen = {}
@@ -794,7 +796,7 @@ class TestAuthAdapters:
             seen.update(request.headers)
             return httpx.Response(200)
 
-        auth = wt.WorkloadTokenHttpxAuth(FixedToken("tok"))  # type: ignore[arg-type]
+        auth = wt_auth.WorkloadTokenHttpxAuth(FixedToken("tok"))  # type: ignore[arg-type]
         with httpx.Client(transport=httpx.MockTransport(handler), auth=auth) as client:
             client.get("https://x.test/")
         assert seen["authorization"] == "Bearer tok"
@@ -809,7 +811,7 @@ class TestAuthAdapters:
             return httpx.Response(200)
 
         async def run() -> None:
-            auth = wt.WorkloadTokenHttpxAuth(FixedToken("tok"))  # type: ignore[arg-type]
+            auth = wt_auth.WorkloadTokenHttpxAuth(FixedToken("tok"))  # type: ignore[arg-type]
             transport = httpx.MockTransport(handler)
             async with httpx.AsyncClient(transport=transport, auth=auth) as client:
                 await client.get("https://x.test/")
@@ -821,7 +823,7 @@ class TestAuthAdapters:
         def handler(request: httpx.Request) -> httpx.Response:
             raise AssertionError("request must not be sent")
 
-        auth = wt.WorkloadTokenHttpxAuth(FixedToken(None))  # type: ignore[arg-type]
+        auth = wt_auth.WorkloadTokenHttpxAuth(FixedToken(None))  # type: ignore[arg-type]
         with httpx.Client(transport=httpx.MockTransport(handler), auth=auth) as client:
             with pytest.raises(wt.WorkloadTokenError):
                 client.get("https://x.test/")
