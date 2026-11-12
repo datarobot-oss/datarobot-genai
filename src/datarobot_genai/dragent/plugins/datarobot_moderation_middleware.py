@@ -1548,16 +1548,24 @@ class DataRobotModerationMiddleware(
         # agent's native output into ``DRAgentEventResponse`` before this hook runs, so moderation
         # only ever handles that canonical type.
         original_output = _require_dragent_event_response(original_output)
-        if not _response_has_assistant_text_deltas(original_output):
-            return None
-        response_text = convert_dragent_event_response_to_str(original_output)
-
-        if not response_text.strip():
+        state = _moderation_invoke_state_ctx.get()
+        if state is None:
             return None
 
         pipeline = moderation._pipeline
-        state = _moderation_invoke_state_ctx.get()
-        if state is None:
+        response_text = (
+            convert_dragent_event_response_to_str(original_output)
+            if _response_has_assistant_text_deltas(original_output)
+            else ""
+        )
+        if not response_text.strip():
+            # Nothing to postscore, but the prompt stage already ran: report its metrics.
+            await asyncio.to_thread(
+                _report_guard_metrics,
+                pipeline,
+                state.prescore_df,
+                api_token=self._request_api_token(),
+            )
             return None
 
         try:

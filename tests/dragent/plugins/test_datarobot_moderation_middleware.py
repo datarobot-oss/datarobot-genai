@@ -1405,6 +1405,7 @@ async def _post_invoke_with_report(
     pipeline: MagicMock,
     prescore: pd.DataFrame,
     postscore: pd.DataFrame,
+    output: DRAgentEventResponse | None = None,
 ) -> InvocationContext:
     pipeline.get_postscore_guards.return_value = [MagicMock()]
     moderation = _moderation_mock(pipeline)
@@ -1413,7 +1414,7 @@ async def _post_invoke_with_report(
         0.0,
         postscore,
     )
-    ctx = _invocation(_make_run_input(), output=_text_response("model-out"))
+    ctx = _invocation(_make_run_input(), output=output or _text_response("model-out"))
     with patch(
         "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
         return_value=moderation,
@@ -1444,6 +1445,38 @@ async def test_post_invoke_reports_prompt_and_response_guard_metrics_as_one_row(
     assert len(row) == 1
     assert set(prescore.columns) | set(postscore.columns) <= set(row.columns)
     assert row["tokens_score"].iloc[0] == postscore["tokens_score"].iloc[0]
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        _text_response("   "),
+        DRAgentEventResponse(
+            events=[
+                ToolCallStartEvent(
+                    tool_call_id="tc1", tool_call_name="noop", parent_message_id=None
+                )
+            ],
+            usage_metrics=default_usage_metrics(),
+        ),
+    ],
+    ids=["whitespace-text", "tool-call-only"],
+)
+async def test_post_invoke_reports_prompt_metrics_when_there_is_no_text_to_postscore(
+    builder_mock: MagicMock, output: DRAgentEventResponse
+) -> None:
+    # GIVEN a prompt that passed its guards and a reply without assistant text
+    pipeline = _pipeline_mock()
+    prescore = _prescore_df_ok("p")
+
+    # WHEN post_invoke has nothing to postscore
+    ctx = await _post_invoke_with_report(builder_mock, pipeline, prescore, pd.DataFrame(), output)
+
+    # THEN the reply is untouched and the prompt-stage metrics are still reported once
+    assert ctx.output is output
+    pipeline.report_custom_metrics.assert_called_once()
+    (row,) = pipeline.report_custom_metrics.call_args.args
+    assert row.equals(prescore)
 
 
 async def test_post_invoke_reporting_failure_does_not_fail_the_request(
