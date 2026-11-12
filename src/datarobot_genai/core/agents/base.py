@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import abc
+import contextlib
 import functools
 import json
 import logging
@@ -180,8 +181,9 @@ class BaseAgent(Generic[TTool], abc.ABC):
             context=[],
             forwardedProps=None,
         )
-        async for output in self.invoke(run_input):
-            yield output
+        async with contextlib.aclosing(self.invoke(run_input)) as events:
+            async for output in events:
+                yield output
 
     def build_history_summary(
         self,
