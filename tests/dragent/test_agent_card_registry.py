@@ -25,6 +25,7 @@ import pytest
 from a2a.types import AgentCard
 
 import datarobot_genai.dragent.memory_space_cache as memory_space_cache_module
+from datarobot_genai.core.auth.workload_token import WorkloadTokenError
 from datarobot_genai.dragent.agent_card_registry import _MAX_PAGES
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
@@ -1690,3 +1691,131 @@ class TestAgentCardRegistryIdChunking:
             await registry.prefetch(workload_ids=ids)
 
         assert [len(chunk) for chunk in self._requested_ids(client, "workloadIds")] == [20, 1]
+
+
+# ---------------------------------------------------------------------------
+# Tests: workload identity as the owner credential
+# ---------------------------------------------------------------------------
+
+
+class _FakeTokenSource:
+    def __init__(self, token: str | None) -> None:
+        self._token = token
+
+    def token(self) -> str:
+        if self._token is None:
+            raise WorkloadTokenError("No valid workload token: down")
+        return self._token
+
+
+def _ok_client() -> AsyncMock:
+    response = MagicMock(spec=httpx.Response)
+    response.status_code = 200
+    response.json.return_value = _registry_response(_entry(dep_id="dep-1"))
+    response.raise_for_status = MagicMock()
+    client = AsyncMock()
+    client.get = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    return client
+
+
+def _workload_registry(source, api_token: str | None = "api-tok") -> AgentCardRegistry:
+    registry = AgentCardRegistry(
+        config=AgentCardRegistryConfig(agent_card_registry_cache_ttl=3600),
+        api_token=api_token,
+        endpoint="https://ep",
+        workload_token_source=source,
+    )
+    registry._backend = MemoryAgentCardCacheBackend()
+    return registry
+
+
+class TestWorkloadIdentityOwnerCredential:
+    def test_flag_is_off_by_default(self):
+        assert AgentCardRegistryConfig().agent_card_registry_use_workload_identity is False
+
+    def test_resolve_settings_without_token_when_not_required(self):
+        mock_settings = MagicMock(spec=DataRobotRegistrySettings)
+        mock_settings.datarobot_endpoint = "https://ep"
+        with (
+            patch(f"{_MODULE}.DataRobotRegistrySettings", return_value=mock_settings),
+            patch(f"{_MODULE}.resolve_config") as mock_resolve,
+        ):
+            mock_resolve.return_value.resolve_datarobot_api_token.return_value = None
+            assert _resolve_settings(require_token=False) == (None, "https://ep")
+
+    async def test_owner_lookup_uses_workload_token(self):
+        # GIVEN a registry with a workload token source
+        client = _ok_client()
+        registry = _workload_registry(_FakeTokenSource("wl-tok"))
+        # WHEN the owner fetches
+        with patch(f"{_MODULE}.httpx.AsyncClient", return_value=client):
+            await registry._fetch({"deploymentIds": "dep-1"})
+        # THEN the workload token is the bearer
+        assert client.get.call_args.kwargs["headers"] == {"Authorization": "Bearer wl-tok"}
+
+    async def test_falls_back_to_api_token_without_a_workload_token(self):
+        client = _ok_client()
+        registry = _workload_registry(_FakeTokenSource(None))
+        with patch(f"{_MODULE}.httpx.AsyncClient", return_value=client):
+            await registry._fetch({"deploymentIds": "dep-1"})
+        assert client.get.call_args.kwargs["headers"] == {"Authorization": "Bearer api-tok"}
+
+    async def test_no_credential_at_all_raises(self):
+        registry = _workload_registry(_FakeTokenSource(None), api_token=None)
+        with pytest.raises(AgentCardRegistryError, match="No valid workload token: down"):
+            await registry._fetch({"deploymentIds": "dep-1"})
+
+    async def test_caller_headers_still_win(self):
+        client = _ok_client()
+        registry = _workload_registry(_FakeTokenSource("wl-tok"))
+        with patch(f"{_MODULE}.httpx.AsyncClient", return_value=client):
+            await registry._fetch(
+                {"deploymentIds": "dep-1"}, auth_headers={"Authorization": "Bearer caller"}
+            )
+        assert client.get.call_args.kwargs["headers"] == {"Authorization": "Bearer caller"}
+
+
+class TestDefaultRegistryWorkloadIdentity:
+    @pytest.fixture(autouse=True)
+    def _reset(self):
+        reset_default_registry()
+        yield
+        reset_default_registry()
+
+    @pytest.fixture
+    def settings(self):
+        mock_settings = MagicMock(spec=DataRobotRegistrySettings)
+        mock_settings.datarobot_endpoint = "https://ep"
+        with (
+            patch(f"{_MODULE}.DataRobotRegistrySettings", return_value=mock_settings),
+            patch(f"{_MODULE}.resolve_config") as mock_resolve,
+        ):
+            yield mock_resolve.return_value.resolve_datarobot_api_token
+
+    def test_flag_off_ignores_identity(self, settings, monkeypatch):
+        # GIVEN identity available but the flag unset
+        settings.return_value = "api-tok"
+        monkeypatch.delenv("AGENT_CARD_REGISTRY_USE_WORKLOAD_IDENTITY", raising=False)
+        with patch(f"{_MODULE}.get_workload_token_source", return_value=_FakeTokenSource("t")):
+            registry = get_default_registry_sync()
+        # THEN today's API-key behaviour is unchanged
+        assert registry._workload_token_source is None
+
+    def test_flag_on_with_identity_needs_no_api_token(self, settings, monkeypatch):
+        settings.return_value = None
+        monkeypatch.setenv("AGENT_CARD_REGISTRY_USE_WORKLOAD_IDENTITY", "true")
+        source = _FakeTokenSource("t")
+        with patch(f"{_MODULE}.get_workload_token_source", return_value=source):
+            registry = get_default_registry_sync()
+        assert registry._workload_token_source is source
+
+    def test_flag_on_without_identity_still_needs_api_token(self, settings, monkeypatch):
+        settings.return_value = None
+        monkeypatch.setenv("AGENT_CARD_REGISTRY_USE_WORKLOAD_IDENTITY", "true")
+        with (
+            patch(f"{_MODULE}.get_workload_token_source", return_value=None),
+            pytest.raises(AgentCardRegistryError, match="API token is required"),
+        ):
+            get_default_registry_sync()

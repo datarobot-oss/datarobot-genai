@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -21,15 +23,20 @@ from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_auth_provider
 from nat.data_models.authentication import AuthProviderBaseConfig
 from nat.data_models.authentication import AuthResult
+from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
 from nat.data_models.common import SerializableSecretStr
 from pydantic import Field
 from pydantic import SecretStr
 
+from datarobot_genai.core.auth.workload_token import WorkloadTokenError
+from datarobot_genai.core.auth.workload_token import get_workload_token_source
 from datarobot_genai.core.config import default_api_key
 from datarobot_genai.core.mcp import MCPConfig
 from datarobot_genai.dragent.context import extract_authorization_from_context
 from datarobot_genai.dragent.context import extract_datarobot_headers_from_context
+
+logger = logging.getLogger(__name__)
 
 
 def _get_default_api_token() -> SecretStr | None:
@@ -127,3 +134,48 @@ async def datarobot_mcp_auth_provider(
     config: DataRobotMCPAuthProviderConfig, builder: Builder
 ) -> AsyncGenerator[DataRobotMCPAuthProvider]:
     yield DataRobotMCPAuthProvider(config=config)
+
+
+class DataRobotWorkloadIdentityAuthProviderConfig(  # type: ignore[call-arg]
+    AuthProviderBaseConfig, name="datarobot_workload_identity"
+):
+    """Authenticate as the workload, with its identity token (core.auth.workload_token)."""
+
+    fallback_to_api_key: bool = Field(
+        default=True,
+        description=(
+            "Use DATAROBOT_API_TOKEN when the workload has no identity or no token could be "
+            "obtained. With False, authenticate() raises instead."
+        ),
+    )
+    default_user_id: str | None = Field(default="default-user", description="Default user ID")
+    allow_default_user_id_for_tool_calls: bool = Field(
+        default=True, description="Allow default user ID for tool calls"
+    )
+
+
+class DataRobotWorkloadIdentityAuthProvider(
+    AuthProviderBase[DataRobotWorkloadIdentityAuthProviderConfig]
+):
+    async def authenticate(self, user_id: str | None = None, **kwargs: Any) -> AuthResult | None:
+        """Return ``Authorization: Bearer`` with the workload token, or the API key fallback."""
+        source = get_workload_token_source()
+        try:
+            if source is None:
+                raise WorkloadTokenError("Workload identity is not configured")
+            # token() may block on its first fetch; keep it off the event loop.
+            token = await asyncio.to_thread(source.token)
+        except WorkloadTokenError as exc:
+            # API-token fallback: remove when API keys are retired.
+            if not (self.config.fallback_to_api_key and (api_key := default_api_key())):
+                raise
+            logger.warning("%s; authenticating with DATAROBOT_API_TOKEN", exc)
+            token = api_key
+        return AuthResult(credentials=[BearerTokenCred(token=SecretStr(token))])
+
+
+@register_auth_provider(config_type=DataRobotWorkloadIdentityAuthProviderConfig)
+async def datarobot_workload_identity_auth_provider(
+    config: DataRobotWorkloadIdentityAuthProviderConfig, builder: Builder
+) -> AsyncGenerator[DataRobotWorkloadIdentityAuthProvider]:
+    yield DataRobotWorkloadIdentityAuthProvider(config=config)

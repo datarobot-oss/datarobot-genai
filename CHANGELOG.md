@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.7 - 2026-11-12
+- `dragent`: Agent-card lookups can authenticate as the workload. Off by default.
+  - `AGENT_CARD_REGISTRY_USE_WORKLOAD_IDENTITY=true` makes the registry's owner lookups send the
+    workload token instead of `DATAROBOT_API_TOKEN`, which is then optional. The API token is still
+    used when the workload has no identity or `token()` raises `WorkloadTokenError`. Caller credentials still
+    come first.
+  - New NAT auth provider `datarobot_workload_identity` for A2A clients: `Authorization: Bearer
+    <workload token>`, falling back to `DATAROBOT_API_TOKEN` unless `fallback_to_api_key: false`.
+  - The registry (`/agentCards/`) does not accept workload tokens yet, so leave this off for now.
+
 ## 0.31.5 - 2026-11-10
 - `drmcp`: Fixed tools that call DataRobot through the Python SDK sending JWTs, such as the
   caller's external identity provider token (from `x-datarobot-external-access-token`) or a

@@ -60,6 +60,9 @@ from pydantic import Field
 from pydantic import field_validator
 from pydantic import model_validator
 
+from datarobot_genai.core.auth.workload_token import WorkloadTokenError
+from datarobot_genai.core.auth.workload_token import WorkloadTokenSource
+from datarobot_genai.core.auth.workload_token import get_workload_token_source
 from datarobot_genai.core.config import resolve_config
 from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import LookupKeyType
@@ -210,6 +213,16 @@ class AgentCardRegistryConfig(DataRobotAppFrameworkBaseSettings):
         ),
     )
 
+    agent_card_registry_use_workload_identity: bool = Field(
+        default=False,
+        description=(
+            "Authenticate the owner's registry lookups with the workload identity token "
+            "(core.auth.workload_token) instead of DATAROBOT_API_TOKEN, when the workload "
+            "has an identity. The API token remains the fallback. Off by default: the "
+            "registry does not accept workload tokens yet. Default: False."
+        ),
+    )
+
     @field_validator("agent_card_registry_path")
     @classmethod
     def _validate_registry_path(cls, value: str) -> str:
@@ -254,11 +267,16 @@ class AgentCardRegistryError(RuntimeError):
 def _resolve_settings(
     api_token: str | None = None,
     endpoint: str | None = None,
-) -> tuple[str, str]:
-    """Return validated ``(api_token, endpoint)`` from explicit values or settings."""
+    *,
+    require_token: bool = True,
+) -> tuple[str | None, str]:
+    """Return validated ``(api_token, endpoint)`` from explicit values or settings.
+
+    ``require_token=False`` when another owner credential (the workload token) exists.
+    """
     settings = DataRobotRegistrySettings()
     resolved_token = api_token or resolve_config().resolve_datarobot_api_token()
-    if not resolved_token:
+    if not resolved_token and require_token:
         raise AgentCardRegistryError(
             "DataRobot API token is required for agent card registry lookup. "
             "Set the DATAROBOT_API_TOKEN environment variable or provide it explicitly."
@@ -426,8 +444,9 @@ class AgentCardRegistry:
         self,
         *,
         config: AgentCardRegistryConfig,
-        api_token: str,
+        api_token: str | None,
         endpoint: str,
+        workload_token_source: WorkloadTokenSource | None = None,
     ) -> None:
         self._lock = asyncio.Lock()
 
@@ -448,6 +467,8 @@ class AgentCardRegistry:
         self._soft_cache_ttl: int = soft_cache_ttl
         self._on_duplicate = config.agent_card_registry_on_duplicate
         self._api_token = api_token
+        # Owner credential: the workload token when given and held, else the API token.
+        self._workload_token_source = workload_token_source
         base = _registry_base_endpoint(config.agent_card_registry_source, endpoint)
         self._registry_url = build_agent_cards_registry_url(base, config.agent_card_registry_path)
         self._backend = create_agent_card_cache_backend(self._cache_ttl)
@@ -573,7 +594,7 @@ class AgentCardRegistry:
         self._raise_if_cooldown_active()
 
         registry_url = self._registry_url
-        headers = auth_headers or {"Authorization": f"Bearer {self._api_token}"}
+        headers = auth_headers or await self._owner_headers()
         using_owner_key = auth_headers is None
         params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
 
@@ -617,7 +638,7 @@ class AgentCardRegistry:
                 self._mark_registry_unhealthy()
             raise AgentCardRegistryError(
                 f"Agent card registry request failed with HTTP "
-                f"{exc.response.status_code}. Verify your API token and that "
+                f"{exc.response.status_code}. Verify the credential and that "
                 f"the agents are registered."
             ) from exc
         except httpx.HTTPError as exc:
@@ -631,6 +652,24 @@ class AgentCardRegistry:
             pages_fetched,
         )
         return all_entries
+
+    async def _owner_headers(self) -> dict[str, str]:
+        """Return owner ``Authorization``: the workload token if held, else the API token."""
+        if self._workload_token_source is not None:
+            try:
+                # token() may block on its first fetch; keep it off the event loop.
+                token = await asyncio.to_thread(self._workload_token_source.token)
+                return {"Authorization": f"Bearer {token}"}
+            except WorkloadTokenError as exc:
+                if not self._api_token:
+                    raise AgentCardRegistryError(f"Agent card registry lookup: {exc}") from exc
+                # API-token fallback: remove when API keys are retired.
+                logger.warning("Agent card registry: %s; using the API token", exc)
+        if not self._api_token:
+            raise AgentCardRegistryError(
+                "No workload identity and no DATAROBOT_API_TOKEN for agent card registry lookup."
+            )
+        return {"Authorization": f"Bearer {self._api_token}"}
 
     async def _is_fresh(self, key: str, *, key_type: LookupKeyType) -> bool:
         """Return True if *key* is cached and within the soft TTL."""
@@ -918,6 +957,25 @@ class AgentCardRegistry:
 # ---------------------------------------------------------------------------
 
 
+def _build_default_registry() -> AgentCardRegistry:
+    config = AgentCardRegistryConfig()
+    source = None
+    if config.agent_card_registry_use_workload_identity:
+        source = get_workload_token_source()
+        if source is None:
+            logger.warning(
+                "AGENT_CARD_REGISTRY_USE_WORKLOAD_IDENTITY is set but the workload has no "
+                "identity; using DATAROBOT_API_TOKEN"
+            )
+    api_token, endpoint = _resolve_settings(require_token=source is None)
+    return AgentCardRegistry(
+        config=config,
+        api_token=api_token,
+        endpoint=endpoint,
+        workload_token_source=source,
+    )
+
+
 class _RegistryHolder:
     """Mutable container for the singleton."""
 
@@ -939,12 +997,7 @@ async def get_default_registry() -> AgentCardRegistry:
                 # Provision L2 on this loop before __init__ builds the cache
                 # backend. The sync helper cannot nest asyncio.run here.
                 await try_resolve_memory_space_id_async()
-                api_token, endpoint = _resolve_settings()
-                _RegistryHolder.instance = AgentCardRegistry(
-                    config=AgentCardRegistryConfig(),
-                    api_token=api_token,
-                    endpoint=endpoint,
-                )
+                _RegistryHolder.instance = _build_default_registry()
     return _RegistryHolder.instance
 
 
@@ -958,12 +1011,7 @@ def get_default_registry_sync() -> AgentCardRegistry:
     called on a running event loop.
     """
     if _RegistryHolder.instance is None:
-        api_token, endpoint = _resolve_settings()
-        _RegistryHolder.instance = AgentCardRegistry(
-            config=AgentCardRegistryConfig(),
-            api_token=api_token,
-            endpoint=endpoint,
-        )
+        _RegistryHolder.instance = _build_default_registry()
     return _RegistryHolder.instance
 
 
