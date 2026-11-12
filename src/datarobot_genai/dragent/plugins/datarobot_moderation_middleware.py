@@ -58,6 +58,7 @@ import contextvars
 import logging
 import math
 import os
+import threading
 import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
@@ -97,6 +98,7 @@ from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
+from datarobot_dome.request_credentials import use_request_token
 from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.builder.builder import Builder
@@ -1348,6 +1350,34 @@ def _clear_moderation_invoke_state_if_set() -> None:
     _moderation_invoke_state_ctx.reset(state.ctx_token)
 
 
+# DOME custom-metric sessions share a synchronous upload loop; uploads cannot overlap.
+_GUARD_METRICS_LOCK = threading.Lock()
+
+
+def _report_guard_metrics(
+    pipeline: Any,
+    prescore_df: pd.DataFrame,
+    postscore_df: pd.DataFrame | None = None,
+    *,
+    api_token: str | None = None,
+) -> None:
+    """Report one prompt (+ response) row of guard metrics (counters, scores, violations).
+
+    ``evaluate_prompt_async`` / ``evaluate_response_async`` do not report them; the caller does,
+    as the streaming path and the DRUM integration do. A reporting failure is logged only: it must
+    not fail an already moderated request.
+    """
+    try:
+        row = prescore_df.copy()
+        if postscore_df is not None:
+            for column in postscore_df.columns:
+                row[column] = postscore_df[column].values
+        with _GUARD_METRICS_LOCK, use_request_token(api_token):
+            pipeline.report_custom_metrics(row)
+    except Exception:
+        _logger.exception("Reporting guard metrics failed")
+
+
 class DataRobotModerationMiddleware(
     FunctionMiddleware,  # type: ignore[misc]
 ):
@@ -1468,6 +1498,12 @@ class DataRobotModerationMiddleware(
                 # If all prompts in the input are blocked, means history as well as the prompt
                 # are not worthy to be sent to LLM. No invoke state: post_invoke / streaming never
                 # run.
+                await asyncio.to_thread(
+                    _report_guard_metrics,
+                    pipeline,
+                    prescore_df,
+                    api_token=self._request_api_token(),
+                )
                 context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
                 return context
 
@@ -1532,11 +1568,18 @@ class DataRobotModerationMiddleware(
             # Wrap in the NAT workflow trace context so dome's ``evaluate_response`` span joins the
             # request trace (see the pre_invoke prescore call for the full rationale).
             with use_nat_workflow_trace_context():
-                response_eval, _, _postscore_df = await moderation.evaluate_response_async(
+                response_eval, _, postscore_df = await moderation.evaluate_response_async(
                     response_text,
                     prompt=state.prompt,
                     api_token=self._request_api_token(),
                 )
+            await asyncio.to_thread(
+                _report_guard_metrics,
+                pipeline,
+                state.prescore_df,
+                postscore_df,
+                api_token=self._request_api_token(),
+            )
 
             prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
 

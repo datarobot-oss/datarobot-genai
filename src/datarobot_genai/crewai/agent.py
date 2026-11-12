@@ -24,8 +24,12 @@ default. Subclasses may implement message capture if they need interactions.
 from __future__ import annotations
 
 import abc
+import asyncio
+import functools
 import logging
 import uuid
+import weakref
+from collections.abc import AsyncGenerator
 from collections.abc import Callable
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
@@ -80,6 +84,34 @@ def _dedupe_tools_by_name(tools: list[BaseTool]) -> list[BaseTool]:
         seen.add(tool.name)
         unique.append(tool)
     return unique
+
+
+# CrewAI's event bus is process-global and the crew's agents (with their cached executors) are
+# shared across requests, so two overlapping runs corrupt each other: the second fails with
+# "Executor is already running" (HTTP 422). Runs are therefore queued, one at a time per event
+# loop (an ``asyncio.Lock`` belongs to the loop it first waits on).
+# Keep locks alive only while invocations own them: a contended lock retains its loop.
+_INVOKE_LOCKS: weakref.WeakValueDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
+    weakref.WeakValueDictionary()
+)
+
+
+def _serialize_invocations(
+    invoke: Callable[..., AsyncGenerator[Any, None]],
+) -> Callable[..., AsyncGenerator[Any, None]]:
+    """Hold the invoke lock until the wrapped async generator is exhausted or closed."""
+
+    @functools.wraps(invoke)
+    async def wrapper(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        async with _INVOKE_LOCKS.setdefault(asyncio.get_running_loop(), asyncio.Lock()):
+            events = invoke(*args, **kwargs)
+            try:
+                async for event in events:
+                    yield event
+            finally:
+                await events.aclose()
+
+    return wrapper
 
 
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
@@ -399,6 +431,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         return default_usage_metrics()
 
     @frame_agent_errors
+    @_serialize_invocations
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
@@ -502,6 +535,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     for item in out(emitter.finish(), usage_metrics):
                         yield item
                     raise
+                finally:
+                    # Stop CrewAI's background task before releasing the invocation lock.
+                    await crew_output.aclose()
             else:
                 message_id = str(uuid.uuid4())
                 response_text = str(crew_output.raw)

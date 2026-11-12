@@ -355,8 +355,9 @@ def frame_agent_errors(invoke: Callable[..., InvokeReturn]) -> Callable[..., Inv
     @functools.wraps(invoke)
     async def wrapper(self: Any, run_agent_input: RunAgentInput) -> InvokeReturn:
         open_text_ids: set[str] = set()
+        events = invoke(self, run_agent_input)
         try:
-            async for event, interactions, usage in invoke(self, run_agent_input):
+            async for event, interactions, usage in events:
                 track_open_text(open_text_ids, event)
                 yield event, interactions, usage
         except Exception as exc:
@@ -368,5 +369,7 @@ def frame_agent_errors(invoke: Callable[..., InvokeReturn]) -> Callable[..., Inv
                 None,
                 default_usage_metrics(),
             )
+        finally:
+            await events.aclose()
 
     return wrapper

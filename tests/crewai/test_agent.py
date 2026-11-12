@@ -13,7 +13,10 @@
 # limitations under the License.
 
 # ruff: noqa: I001
+import asyncio
+import gc
 import queue
+import weakref
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import MagicMock
@@ -23,6 +26,8 @@ from crewai.types.streaming import CrewStreamingOutput
 from crewai.types.streaming import StreamChunk
 from crewai.types.streaming import StreamChunkType
 import pytest
+from crewai.crews.utils import StreamingContext
+from crewai.utilities.streaming import create_async_chunk_generator
 from ag_ui.core import ReasoningEndEvent
 from ag_ui.core import ReasoningMessageContentEvent
 from ag_ui.core import ReasoningMessageEndEvent
@@ -45,6 +50,8 @@ from datarobot_dome.guards.agent_goal_accuracy import HumanMessage
 from datarobot_genai.core.pipeline_interactions import MultiTurnSample
 
 from datarobot_genai.core.agents.base import UsageMetrics
+from datarobot_genai.crewai.agent import _serialize_invocations
+from datarobot_genai.crewai.agent import _INVOKE_LOCKS
 from datarobot_genai.core.agents.verify import validate_sequence
 from datarobot_genai.crewai.agent import CrewAIAgent
 from datarobot_genai.crewai.agent import datarobot_agent_class_from_crew
@@ -1518,3 +1525,109 @@ async def test_invoke_streaming_post_loop_tool_drain_has_empty_parent(
     starts = [e for e in events if isinstance(e, ToolCallStartEvent)]
     assert len(starts) == 1
     assert starts[0].parent_message_id == ""  # drained post-loop, no bubble was open
+
+
+async def test_overlapping_invocations_run_one_at_a_time() -> None:
+    # GIVEN an invoke generator that records how many runs are inside it at once
+    running = 0
+    peak = 0
+
+    @_serialize_invocations
+    async def invoke() -> AsyncGenerator[int, None]:
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        try:
+            await asyncio.sleep(0.01)
+            yield 1
+            await asyncio.sleep(0.01)
+            yield 2
+        finally:
+            running -= 1
+
+    async def consume() -> list[int]:
+        return [item async for item in invoke()]
+
+    # WHEN several runs overlap
+    results = await asyncio.gather(*(consume() for _ in range(5)))
+
+    # THEN they are queued: never more than one at a time, and every run completes
+    assert peak == 1
+    assert results == [[1, 2]] * 5
+
+
+def test_invocation_lock_does_not_retain_closed_event_loop() -> None:
+    # GIVEN contention that binds the invocation lock to its event loop
+    @_serialize_invocations
+    async def invoke() -> AsyncGenerator[None, None]:
+        await asyncio.sleep(0)
+        yield None
+
+    async def consume() -> None:
+        async for _ in invoke():
+            pass
+
+    async def run() -> weakref.ReferenceType[asyncio.AbstractEventLoop]:
+        await asyncio.gather(consume(), consume())
+        return weakref.ref(asyncio.get_running_loop())
+
+    # WHEN the loop closes and its owners are collected
+    loop_ref = asyncio.run(run())
+    gc.collect()
+
+    # THEN the lock cache does not keep the closed loop alive
+    assert loop_ref() is None
+
+
+async def test_closing_agent_invocation_releases_lock_immediately(run_agent_input) -> None:
+    # GIVEN the full invoke decorator stack paused at its first event
+    agent = AgentForTest(api_base="https://x/", api_key="k")
+    events = agent.invoke(run_agent_input)
+    await anext(events)
+    lock = _INVOKE_LOCKS[asyncio.get_running_loop()]
+    assert lock.locked()
+
+    # WHEN the consumer closes the public generator
+    await events.aclose()
+
+    # THEN another request can acquire the lock without waiting for garbage collection
+    assert not lock.locked()
+
+
+async def test_closing_stream_stops_crew_before_releasing_lock(run_agent_input) -> None:
+    # GIVEN CrewAI's streaming iterator running a background crew task
+    ctx = StreamingContext(use_async=True)
+    stopped = asyncio.Event()
+    locked_on_stop: list[bool] = []
+
+    async def run_crew() -> None:
+        try:
+            assert ctx.state.async_queue is not None
+            ctx.state.async_queue.put_nowait(_text_chunk("streaming", "agent"))
+            await asyncio.Event().wait()
+        finally:
+            locked_on_stop.append(_INVOKE_LOCKS[asyncio.get_running_loop()].locked())
+            stopped.set()
+
+    output = CrewStreamingOutput(
+        async_iterator=create_async_chunk_generator(ctx.state, run_crew, ctx.output_holder)
+    )
+    ctx.output_holder.append(output)
+    agent = AgentForTest(api_base="https://x/", api_key="k", crew=CrewForTest(output))
+    events = agent.invoke(run_agent_input)
+    try:
+        async for event, _, _ in events:
+            if isinstance(event, TextMessageContentEvent):
+                break
+
+        # WHEN the client disconnects after receiving content
+        lock = _INVOKE_LOCKS[asyncio.get_running_loop()]
+        await events.aclose()
+
+        # THEN the background crew stops while the invocation lock is still held
+        assert stopped.is_set()
+        assert all(locked_on_stop)
+        assert not lock.locked()
+    finally:
+        await events.aclose()
+        await output.aclose()
