@@ -121,7 +121,7 @@ class WorkloadIdentityConfig:
         if token_file:
             mode = AuthMode.FEDERATION
             if private_key:
-                logger.info("Workload identity: both auth modes configured; using federation")
+                logger.warning("Workload identity: both auth modes configured; using federation")
             private_key = key_id = ""
         else:
             mode = AuthMode.PRIVATE_KEY_JWT
@@ -247,7 +247,7 @@ class WorkloadTokenSource:
                 # Hourly by default, or at 80% of the lifetime if sooner.
                 self._next_refresh_at = now + min(self._refresh_interval, expires_in * 0.8)
                 self._retry_delay = _MIN_RETRY_SECONDS
-            logger.info("Workload token refreshed; expires in %.0fs", expires_in)
+            logger.debug("Workload token refreshed; expires in %.0fs", expires_in)
 
     def seconds_until_refresh(self) -> float:
         with self._lock:
@@ -266,7 +266,7 @@ class WorkloadTokenSource:
             self._next_refresh_at = now + delay
             self._retry_delay = min(delay * 2, _MAX_RETRY_SECONDS)
             kept = self._token is not None and now < self._expires_at
-        logger.warning(
+        logger.error(
             "Workload token refresh failed (%s); %s; retrying in %.0fs",
             exc if isinstance(exc, WorkloadTokenError) else type(exc).__name__,
             "keeping current token" if kept else "no valid token",
@@ -432,7 +432,7 @@ def get_workload_token_source() -> WorkloadTokenSource | None:
                 try:
                     _SOURCE_STATE["source"] = WorkloadTokenSource(config)
                 except WorkloadTokenError as exc:
-                    logger.warning("Workload identity disabled: %s", exc)
+                    logger.error("Workload identity disabled: %s", exc)
         source = _SOURCE_STATE["source"]
         return source if isinstance(source, WorkloadTokenSource) else None
 
