@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.8 - 2026-11-12
+- OTLP HTTP export sends the workload token as a bearer when workload identity is configured.
+  Static OTLP headers are still sent, and export goes on with them alone when no token can be
+  obtained. Exporters built elsewhere (NAT's) get it through the OTel SDK's
+  `OTEL_PYTHON_EXPORTER_OTLP_HTTP_CREDENTIAL_PROVIDER` hook, entry point
+  `datarobot_workload_identity`. Without workload identity nothing changes.
+
 ## 0.31.5 - 2026-11-10
 - `drmcp`: Fixed tools that call DataRobot through the Python SDK sending JWTs, such as the
   caller's external identity provider token (from `x-datarobot-external-access-token`) or a

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.31.5"
+version = "0.31.8"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11, <3.14"
@@ -35,6 +35,9 @@ crewai_llm_clients = "datarobot_genai.crewai.llm_clients"
 llamaindex_llm_clients = "datarobot_genai.llama_index.llm_clients"
 mcp_client_with_xaa_support = "datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client"
 dr_eval_plugins = "datarobot_genai.dragent.eval.register"
+
+[project.entry-points.opentelemetry_otlp_credential_provider]
+datarobot_workload_identity = "datarobot_genai.core.telemetry.workload_otlp:otlp_session"
 
 [project.entry-points.'nat.front_ends']
 dragent = "datarobot_genai.dragent.frontends.register"

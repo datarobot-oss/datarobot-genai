@@ -40,8 +40,10 @@ import urllib.parse
 
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
 
+from datarobot_genai.core.auth.workload_token import get_workload_token_source
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.core.telemetry.workload_otlp import workload_otlp_session
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +113,9 @@ def resolve_datarobot_headers_from_env() -> dict[str, str] | None:
             "X-DataRobot-Api-Key": api_key,
             "X-DataRobot-Entity-Id": entity_id,
         }
+    # Workload identity alone: the bearer token (see workload_otlp_session) authenticates.
+    if entity_id and get_workload_token_source() is not None:
+        return {"X-DataRobot-Entity-Id": entity_id}
     return None
 
 
@@ -241,9 +246,11 @@ def bootstrap_otel_provider_for_datarobot() -> bool:
             )
             return False
 
+        # With workload identity, the session adds Authorization: Bearer per request.
         exporter = OTLPSpanExporter(
             endpoint=endpoint,
             headers=headers,
+            session=workload_otlp_session(),
         )
         processor = (
             SimpleSpanProcessor(exporter)
@@ -346,7 +353,9 @@ def bootstrap_otel_meter_provider_for_datarobot() -> bool:
             )
             return False
 
-        exporter = OTLPMetricExporter(endpoint=endpoint, headers=headers)
+        exporter = OTLPMetricExporter(
+            endpoint=endpoint, headers=headers, session=workload_otlp_session()
+        )
         reader = PeriodicExportingMetricReader(exporter)
         sdk_version = _get_opentelemetry_sdk_version()
         resource = Resource.create(

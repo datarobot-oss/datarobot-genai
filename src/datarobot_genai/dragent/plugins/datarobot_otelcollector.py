@@ -64,6 +64,7 @@ from datarobot_genai.core.telemetry.datarobot_otel import resolve_otel_traces_en
 from datarobot_genai.core.telemetry.nat_context import pop_nat_span_context
 from datarobot_genai.core.telemetry.nat_context import push_nat_span_context
 from datarobot_genai.core.telemetry.nat_context import reset_nat_span_context
+from datarobot_genai.core.telemetry.workload_otlp import enable_otlp_credential_provider
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +193,8 @@ async def datarobot_otelcollector_telemetry_exporter(
 ) -> AsyncGenerator[DataRobotOTLPSpanAdapterExporter]:
     """Yield an OTLP span exporter pointed at the DataRobot OTel collector."""
     headers = dict(resolve_datarobot_headers_from_env() or {})
+    # NAT builds its OTLP exporter without a session; the SDK credential provider adds the bearer.
+    enable_otlp_credential_provider()
     # Caller-supplied headers win on collision; lets you e.g. add request-
     # specific X-DataRobot-* metadata without forking the exporter.
     headers.update(config.extra_headers)

@@ -23,6 +23,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.trace import ProxyTracerProvider
 from opentelemetry.util._once import Once
 
+from datarobot_genai.core.auth import workload_token
 from datarobot_genai.core.telemetry import datarobot_otel
 from datarobot_genai.core.telemetry.nat_tracer import _NAT_TRACER_WRAPPED_ATTR
 
@@ -35,6 +36,10 @@ _ENV_VARS = (
     "OTEL_SERVICE_NAME",
     "OTEL_EXPORTER_OTLP_ENDPOINT",
     "OTEL_EXPORTER_OTLP_HEADERS",
+    workload_token.CLIENT_ID_ENV,
+    workload_token.WORKLOAD_TOKEN_FILE_ENV,
+    workload_token.PRIVATE_KEY_ENV,
+    workload_token.KEY_ID_ENV,
 )
 
 
@@ -51,7 +56,28 @@ def clean_env(monkeypatch):
     monkeypatch.setattr("opentelemetry.metrics._internal._METER_PROVIDER_SET_ONCE", Once())
     monkeypatch.setitem(datarobot_otel._BOOTSTRAP_STATE, "installed", False)
     monkeypatch.setitem(datarobot_otel._METER_BOOTSTRAP_STATE, "installed", False)
-    return monkeypatch
+    workload_token._reset_workload_token_source()
+    yield monkeypatch
+    workload_token._reset_workload_token_source()
+
+
+def _set_workload_identity_env(monkeypatch) -> None:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    pem = (
+        rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        .private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+        .decode()
+    )
+    monkeypatch.setenv(workload_token.CLIENT_ID_ENV, "wl-1")
+    monkeypatch.setenv(workload_token.PRIVATE_KEY_ENV, pem)
+    monkeypatch.setenv(workload_token.KEY_ID_ENV, "kid-1")
+    monkeypatch.setenv("DATAROBOT_PUBLIC_API_ENDPOINT", "https://example.test/api/v2")
 
 
 class TestEnvResolvers:
@@ -173,6 +199,15 @@ class TestHeaderResolvers:
     def test_headers_none_when_entity_id_only(self, clean_env):
         clean_env.setenv("MLOPS_DEPLOYMENT_ID", "abc123")
         assert datarobot_otel.resolve_datarobot_headers_from_env() is None
+
+    def test_entity_id_only_with_workload_identity(self, clean_env):
+        # GIVEN workload identity and no API key
+        _set_workload_identity_env(clean_env)
+        clean_env.setenv("WORKLOAD_ID", "wl-1")
+        # THEN only the entity id header is static; the bearer comes from the session
+        assert datarobot_otel.resolve_datarobot_headers_from_env() == {
+            "X-DataRobot-Entity-Id": "workload-wl-1"
+        }
 
     def test_headers_parsed_from_otlp_env(self, clean_env):
         clean_env.setenv(
@@ -318,6 +353,28 @@ class TestBootstrapOtelProvider:
         assert captured["endpoint"] == "https://example.test/otel/v1/traces"
         assert captured["headers"]["X-DataRobot-Api-Key"] == "tok"
         assert captured["headers"]["X-DataRobot-Entity-Id"] == "deployment-abc123"
+        # No workload identity: no session, so today's behaviour is unchanged.
+        assert captured["session"] is None
+
+    def test_exporter_gets_bearer_session_with_workload_identity(self, clean_env, monkeypatch):
+        captured = {}
+
+        from opentelemetry.exporter.otlp.proto.http import trace_exporter as exporter_module
+
+        real_exporter_cls = exporter_module.OTLPSpanExporter
+
+        def spy_exporter(**kwargs):
+            captured.update(kwargs)
+            return real_exporter_cls(**kwargs)
+
+        monkeypatch.setattr(exporter_module, "OTLPSpanExporter", spy_exporter)
+        self._set_full_env(clean_env)
+        _set_workload_identity_env(clean_env)
+
+        datarobot_otel.bootstrap_otel_provider_for_datarobot()
+
+        assert isinstance(captured["session"].auth, workload_token.WorkloadTokenAuth)
+        assert captured["headers"]["X-DataRobot-Api-Key"] == "tok"
 
     def test_idempotent_second_call(self, clean_env):
         self._set_full_env(clean_env)
@@ -452,6 +509,26 @@ class TestBootstrapOtelMeterProvider:
         assert captured["endpoint"] == "https://example.test/otel/v1/metrics"
         assert captured["headers"]["X-DataRobot-Api-Key"] == "tok"
         assert captured["headers"]["X-DataRobot-Entity-Id"] == "deployment-abc123"
+        assert captured["session"] is None
+
+    def test_exporter_gets_bearer_session_with_workload_identity(self, clean_env, monkeypatch):
+        captured = {}
+
+        from opentelemetry.exporter.otlp.proto.http import metric_exporter as exporter_module
+
+        real_exporter_cls = exporter_module.OTLPMetricExporter
+
+        def spy_exporter(**kwargs):
+            captured.update(kwargs)
+            return real_exporter_cls(**kwargs)
+
+        monkeypatch.setattr(exporter_module, "OTLPMetricExporter", spy_exporter)
+        self._set_full_env(clean_env)
+        _set_workload_identity_env(clean_env)
+
+        datarobot_otel.bootstrap_otel_meter_provider_for_datarobot()
+
+        assert isinstance(captured["session"].auth, workload_token.WorkloadTokenAuth)
 
     def test_idempotent_second_call(self, clean_env):
         self._set_full_env(clean_env)
