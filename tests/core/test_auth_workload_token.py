@@ -285,8 +285,8 @@ class TestTokenRequest:
 
 class TestRefresh:
     @responses.activate
-    def test_refreshes_hourly(self, identity_env):
-        # GIVEN a 7-day token
+    def test_refreshes_at_default_interval(self, identity_env):
+        # GIVEN a token that outlives the interval
         _no_discovery(identity_env)
         responses.post(TOKEN_URL, json=_token_ok("tok-1"))
         responses.post(TOKEN_URL, json=_token_ok("tok-2"))
@@ -301,6 +301,35 @@ class TestRefresh:
         clock.now += 1
         src.refresh_if_due()
         assert src.token() == "tok-2"
+
+    @responses.activate
+    def test_refresh_interval_from_env(self, identity_env):
+        # GIVEN a configured interval shorter than the token lifetime
+        _no_discovery(identity_env)
+        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, "900")
+        responses.post(TOKEN_URL, json=_token_ok())
+        src = _source(FakeClock())
+        src.token()
+        # THEN it refreshes at the interval
+        assert src.seconds_until_refresh() == pytest.approx(900)
+
+    @pytest.mark.parametrize("raw", ["0", "-5", "soon"])
+    def test_bad_refresh_interval_uses_default(self, identity_env, raw):
+        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, raw)
+        config = wt.WorkloadIdentityConfig.from_env()
+        assert config is not None
+        assert config.refresh_interval == wt.DEFAULT_REFRESH_INTERVAL_SECONDS
+
+    @responses.activate
+    def test_interval_longer_than_lifetime_refreshes_before_expiry(self, identity_env):
+        # GIVEN an interval longer than the token lifetime
+        _no_discovery(identity_env)
+        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, "86400")
+        responses.post(TOKEN_URL, json=_token_ok(expires_in=3600))
+        src = _source(FakeClock())
+        src.token()
+        # THEN the lifetime wins
+        assert src.seconds_until_refresh() == pytest.approx(2880)
 
     @responses.activate
     def test_short_lived_token_refreshes_before_expiry(self, identity_env):
@@ -504,7 +533,7 @@ class TestDiscoveryAndOverrides:
 
     @responses.activate
     def test_token_endpoint_override_keeps_discovered_assertion_aud(self, identity_env):
-        # GIVEN a token endpoint override (e.g. an enclave bridge) and discovery
+        # GIVEN a token endpoint override and discovery
         identity_env.setenv(wt.TOKEN_ENDPOINT_ENV, "https://enclave.local/oauth2/token")
         responses.get(RFC8414, status=404)
         responses.get(DISCOVERY, json={"token_endpoint": TOKEN_URL})

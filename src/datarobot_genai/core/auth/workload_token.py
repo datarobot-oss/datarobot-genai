@@ -26,6 +26,9 @@ Two auth modes, picked from env:
 The client id is ``DATAROBOT_CLIENT_ID`` (``WORKLOAD_ID`` as a fallback). The
 token endpoint comes from overrides or discovery off ``DATAROBOT_PUBLIC_API_ENDPOINT``.
 
+The token refreshes every ``DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS`` (default 3600),
+or sooner when the token's lifetime is shorter.
+
 Transport-neutral: ``WorkloadTokenSource.token()``, plus thin ``requests`` and
 ``httpx`` auth adapters. It imports nothing from datarobot_genai, so it can move
 to a shared library as is. Keys and tokens are never logged.
@@ -66,19 +69,22 @@ PUBLIC_API_ENDPOINT_ENV = "DATAROBOT_PUBLIC_API_ENDPOINT"
 DISCOVERY_URL_ENV = "DATAROBOT_OAUTH_DISCOVERY_URL"
 TOKEN_ENDPOINT_ENV = "DATAROBOT_OAUTH_TOKEN_ENDPOINT"
 ASSERTION_AUDIENCE_ENV = "DATAROBOT_OAUTH_CLIENT_ASSERTION_AUDIENCE"
+REFRESH_INTERVAL_ENV = "DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS"
 
 
 _API_V2_SUFFIX = "/api/v2"
 _ASSERTION_LIFETIME_SECONDS = 300
-# Algs Hydra accepts for private_key_jwt, all FIPS-approved. EC algs pin the curve.
+# FIPS-approved private_key_jwt algs. EC algs pin the curve.
 _RSA_ALGS = frozenset({"RS256", "RS384", "RS512", "PS256", "PS384", "PS512"})
 _EC_ALG_CURVES = {"ES256": "secp256r1", "ES384": "secp384r1", "ES512": "secp521r1"}
 _TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"
 _JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 _JWT_BEARER_ASSERTION = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 _HTTP_TIMEOUT_SECONDS = 10.0
-# Refresh hourly; the 7-day lifetime only exists to ride out a hub outage.
+# Tokens are often long-lived to ride out an outage; refreshing more often limits exposure.
 DEFAULT_REFRESH_INTERVAL_SECONDS = 3600.0
+# Refresh by this fraction of the token lifetime when that comes before the interval.
+_REFRESH_LIFETIME_FRACTION = 0.8
 _MIN_RETRY_SECONDS = 30.0
 _MAX_RETRY_SECONDS = 300.0
 # A token this close to expiry counts as expired.
@@ -106,6 +112,7 @@ class WorkloadIdentityConfig:
     discovery_url: str = ""
     token_endpoint: str = ""
     assertion_audience: str = ""
+    refresh_interval: float = DEFAULT_REFRESH_INTERVAL_SECONDS
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> WorkloadIdentityConfig | None:
@@ -139,6 +146,7 @@ class WorkloadIdentityConfig:
             discovery_url=env.get(DISCOVERY_URL_ENV, "").strip(),
             token_endpoint=env.get(TOKEN_ENDPOINT_ENV, "").strip(),
             assertion_audience=env.get(ASSERTION_AUDIENCE_ENV, "").strip(),
+            refresh_interval=_refresh_interval_from_env(env),
         )
 
     def discovery_urls(self) -> list[str]:
@@ -155,6 +163,22 @@ class WorkloadIdentityConfig:
             f"{origin}/.well-known/oauth-authorization-server{parts.path}",
             f"{base}/.well-known/openid-configuration",
         ]
+
+
+def _refresh_interval_from_env(env: Mapping[str, str]) -> float:
+    raw = env.get(REFRESH_INTERVAL_ENV, "").strip()
+    if not raw:
+        return DEFAULT_REFRESH_INTERVAL_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.0
+    if value > 0:
+        return value
+    logger.warning(
+        "Ignoring %s=%r; using %.0fs", REFRESH_INTERVAL_ENV, raw, DEFAULT_REFRESH_INTERVAL_SECONDS
+    )
+    return DEFAULT_REFRESH_INTERVAL_SECONDS
 
 
 def _load_signing_key(private_key: str, alg: str) -> object:
@@ -192,12 +216,12 @@ class WorkloadTokenSource:
         config: WorkloadIdentityConfig,
         *,
         session: requests.Session | None = None,
-        refresh_interval: float = DEFAULT_REFRESH_INTERVAL_SECONDS,
+        refresh_interval: float | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._config = config
         self._http = session or requests.Session()
-        self._refresh_interval = refresh_interval
+        self._refresh_interval = refresh_interval or config.refresh_interval
         self._clock = clock
         self._signing_key = (
             _load_signing_key(config.private_key, config.key_alg)
@@ -244,8 +268,10 @@ class WorkloadTokenSource:
             with self._lock:
                 self._token = token
                 self._expires_at = now + expires_in
-                # Hourly by default, or at 80% of the lifetime if sooner.
-                self._next_refresh_at = now + min(self._refresh_interval, expires_in * 0.8)
+                # Never rely on the lifetime: refresh at the interval or before expiry.
+                self._next_refresh_at = now + min(
+                    self._refresh_interval, expires_in * _REFRESH_LIFETIME_FRACTION
+                )
                 self._retry_delay = _MIN_RETRY_SECONDS
             logger.debug("Workload token refreshed; expires in %.0fs", expires_in)
 
@@ -290,7 +316,7 @@ class WorkloadTokenSource:
                 continue
             if resp.status_code != 200:
                 if not last:
-                    # Hydra serves only the OIDC document; a 404 here is the normal path.
+                    # Many servers publish only the OIDC document; a 404 here is normal.
                     logger.debug(
                         "No authorization server metadata at %s (HTTP %s)", url, resp.status_code
                     )
