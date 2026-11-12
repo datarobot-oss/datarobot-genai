@@ -36,12 +36,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field
 from enum import StrEnum
-from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
-if TYPE_CHECKING:
-    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 logger = logging.getLogger(__name__)
 
@@ -160,10 +159,6 @@ def _refresh_interval_from_env(env: Mapping[str, str]) -> float:
 
 def load_signing_key(private_key: str, alg: str) -> RSAPrivateKey | EllipticCurvePrivateKey:
     """Load the PKCS#8 PEM private key and check it fits ``alg``."""
-    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
-    from cryptography.hazmat.primitives.serialization import load_pem_private_key
-
     if alg not in _RSA_ALGS and alg not in _EC_ALG_CURVES:
         raise WorkloadTokenError(f"{KEY_ALG_ENV}={alg!r} is not a supported signing alg")
     try:

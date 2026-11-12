@@ -27,6 +27,7 @@ import uuid
 from collections.abc import Callable
 from collections.abc import Sequence
 
+import jwt
 import requests
 
 from .config import WORKLOAD_TOKEN_FILE_ENV
@@ -218,8 +219,6 @@ class WorkloadTokenSource:
         raise WorkloadTokenError("no discovery URL")  # pragma: no cover
 
     def _client_assertion(self) -> str:
-        import jwt
-
         assert self._signing_key is not None  # only called in private_key_jwt mode
         # iat/exp are absolute claims, so these need wall-clock time.
         now = int(time.time())

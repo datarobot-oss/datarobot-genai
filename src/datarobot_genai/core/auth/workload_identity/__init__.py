@@ -21,6 +21,9 @@ the current token or raises ``WorkloadTokenError``.
 The ``requests`` and ``httpx`` auth adapters are in ``.auth``, which is not imported
 here, so httpx loads only where it is used. Nothing here imports the rest of
 datarobot_genai, so the package can move to a shared library as is.
+
+Only private_key_jwt needs pyjwt and cryptography (federation does not). As a standalone
+package, they could become an optional extra, imported lazily.
 """
 
 from .config import ASSERTION_AUDIENCE_ENV
