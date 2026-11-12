@@ -203,11 +203,18 @@ def _set_agent_request_attributes(span: Span, instance: Any) -> None:
         set_span_attribute(span, GenAIAttributes.GEN_AI_AGENT_ID, str(instance.id))
 
 
-def _finalize_agent_span(span: Span, instance: Any, token_histogram: Histogram | None) -> None:
+def _finalize_agent_span(
+    span: Span, instance: Any, token_histogram: Histogram | None, before: Any = None
+) -> None:
+    """Record this run's token usage. A crew's agents are reused, so their counters are cumulative:
+    ``before`` is the summary taken when the run started, and only the difference belongs to it.
+    """
     summary = instance._token_process.get_summary()
+    prompt_tokens = summary.prompt_tokens - getattr(before, "prompt_tokens", 0)
+    completion_tokens = summary.completion_tokens - getattr(before, "completion_tokens", 0)
     if token_histogram:
         token_histogram.record(
-            summary.prompt_tokens,
+            prompt_tokens,
             attributes={
                 GenAIAttributes.GEN_AI_PROVIDER_NAME: GenAISystem.CREWAI.value,
                 GenAIAttributes.GEN_AI_TOKEN_TYPE: "input",
@@ -215,7 +222,7 @@ def _finalize_agent_span(span: Span, instance: Any, token_histogram: Histogram |
             },
         )
         token_histogram.record(
-            summary.completion_tokens,
+            completion_tokens,
             attributes={
                 GenAIAttributes.GEN_AI_PROVIDER_NAME: GenAISystem.CREWAI.value,
                 GenAIAttributes.GEN_AI_TOKEN_TYPE: "output",
@@ -224,12 +231,10 @@ def _finalize_agent_span(span: Span, instance: Any, token_histogram: Histogram |
         )
     set_span_attribute(span, GenAIAttributes.GEN_AI_REQUEST_MODEL, str(instance.llm.model))
     set_span_attribute(span, GenAIAttributes.GEN_AI_RESPONSE_MODEL, str(instance.llm.model))
-    if summary.prompt_tokens:
-        set_span_attribute(span, GenAIAttributes.GEN_AI_USAGE_INPUT_TOKENS, summary.prompt_tokens)
-    if summary.completion_tokens:
-        set_span_attribute(
-            span, GenAIAttributes.GEN_AI_USAGE_OUTPUT_TOKENS, summary.completion_tokens
-        )
+    if prompt_tokens:
+        set_span_attribute(span, GenAIAttributes.GEN_AI_USAGE_INPUT_TOKENS, prompt_tokens)
+    if completion_tokens:
+        set_span_attribute(span, GenAIAttributes.GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
     span.set_status(Status(StatusCode.OK))
 
 
@@ -248,9 +253,10 @@ async def wrap_aexecute_task(
             CrewAISpanAttributes(span=span, instance=instance)
             _set_agent_request_attributes(span, instance)
             agent_name = instance.role if hasattr(instance, "role") else None
+            before = instance._token_process.get_summary()
             with agent_name_baggage(agent_name):
                 result = await wrapped(*args, **kwargs)
-            _finalize_agent_span(span, instance, token_histogram)
+            _finalize_agent_span(span, instance, token_histogram, before)
             return result
         except Exception as ex:
             span.set_status(Status(StatusCode.ERROR, str(ex)))
