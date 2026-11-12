@@ -48,7 +48,6 @@ from collections.abc import AsyncGenerator
 from collections.abc import Callable
 from collections.abc import Generator
 from collections.abc import Mapping
-from collections.abc import MutableMapping
 from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field
@@ -461,7 +460,7 @@ class WorkloadTokenAuth(requests.auth.AuthBase):
         self._source = source
 
     def __call__(self, r: requests.PreparedRequest) -> requests.PreparedRequest:
-        _set_bearer(r.headers, self._source.token())
+        r.headers["Authorization"] = f"Bearer {self._source.token()}"
         return r
 
 
@@ -474,19 +473,16 @@ class WorkloadTokenHttpxAuth(httpx.Auth):
     def sync_auth_flow(
         self, request: httpx.Request
     ) -> Generator[httpx.Request, httpx.Response, None]:
-        _set_bearer(request.headers, self._source.token())
+        request.headers["Authorization"] = f"Bearer {self._source.token()}"
         yield request
 
     async def async_auth_flow(
         self, request: httpx.Request
     ) -> AsyncGenerator[httpx.Request, httpx.Response]:
         # token() may block on the first fetch; keep it off the event loop.
-        _set_bearer(request.headers, await asyncio.to_thread(self._source.token))
+        token = await asyncio.to_thread(self._source.token)
+        request.headers["Authorization"] = f"Bearer {token}"
         yield request
-
-
-def _set_bearer(headers: MutableMapping[str, str], token: str) -> None:
-    headers["Authorization"] = f"Bearer {token}"
 
 
 _SOURCE_LOCK = threading.Lock()
