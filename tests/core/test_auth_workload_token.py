@@ -399,6 +399,45 @@ class TestRefresh:
         assert len(responses.calls) == 1
 
     @responses.activate
+    def test_short_lived_token_is_valid_until_refresh(self, identity_env):
+        # GIVEN a 60s token
+        _no_discovery(identity_env)
+        responses.post(TOKEN_URL, json=_token_ok(expires_in=60))
+        clock = FakeClock()
+        src = _source(clock)
+        assert src.token() == "tok-1"
+        # THEN it is still served when its refresh (at 48s) comes due
+        assert src.seconds_until_refresh() == pytest.approx(48)
+        clock.now += 48
+        assert src.token() == "tok-1"
+        # AND it counts as expired 6s (10%) before its lifetime ends
+        clock.now += 6
+        with pytest.raises(wt.WorkloadTokenError):
+            src.token()
+
+    @responses.activate
+    @pytest.mark.parametrize(
+        "rfc8414",
+        [
+            {"body": "<html>not found</html>", "content_type": "text/html"},
+            {"json": {"issuer": "https://app.example.com"}},
+            {"json": ["not", "an", "object"]},
+        ],
+    )
+    def test_discovery_falls_back_on_unusable_200(self, identity_env, rfc8414):
+        responses.get(RFC8414, status=200, **rfc8414)
+        responses.get(DISCOVERY, json={"token_endpoint": TOKEN_URL})
+        responses.post(TOKEN_URL, json=_token_ok())
+        assert _source(FakeClock()).token() == "tok-1"
+
+    @responses.activate
+    def test_discovery_without_token_endpoint_anywhere_raises(self, identity_env):
+        responses.get(RFC8414, status=200, json={})
+        responses.get(DISCOVERY, status=200, json={})
+        with pytest.raises(wt.WorkloadTokenError, match="has no token_endpoint"):
+            _source(FakeClock()).token()
+
+    @responses.activate
     def test_discovery_is_retried_after_failure(self, identity_env):
         responses.get(RFC8414, status=404)
         responses.get(DISCOVERY, status=503)

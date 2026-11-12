@@ -4,35 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.31.6 - 2026-11-11
-- New `datarobot_genai.core.auth.workload_token`: a workload identity token requester with two
-  auth modes, picked from env:
-  - Federation: `DATAROBOT_WORKLOAD_TOKEN_FILE` (a projected Kubernetes ServiceAccount token, re-read
-    on every fetch) is exchanged at the token bridge (RFC 8693, `audience` in the body, no client
-    credential). It wins when both modes are configured.
-  - private_key_jwt: `DATAROBOT_CLIENT_PRIVATE_KEY` (PKCS#8 PEM) and `DATAROBOT_CLIENT_KEY_ID` sign an
-    assertion for `client_credentials` with `DATAROBOT_CLIENT_KEY_ALG`, or RS256 when it is unset.
-    Accepted: RS256/384/512, PS256/384/512, ES256/384/512. An alg outside that list, or one that
-    doesn't fit the key (type or EC curve), disables workload identity with an error.
-
-  The client id is `DATAROBOT_CLIENT_ID`, or `WORKLOAD_ID` when that is unset. The requested
-  audience defaults to `DATAROBOT_PUBLIC_API_ENDPOINT`. `WorkloadTokenSource(audience=..., scopes=[...])`
-  overrides the audience and requests scopes (sent as `scope`, space-separated); each source holds
-  one token for its audience and scopes. One process-wide source refreshes the token in
-  the background and keeps the current one through failures until it expires. It refreshes every
-  `DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS` (default 3600), or at 80% of the token's lifetime when
-  that comes first.
-  `token()` raises `WorkloadTokenError`, with the last refresh failure, when it holds no valid
-  token; it does not fetch again inside the retry backoff.
-  `WorkloadTokenAuth` (requests) and `WorkloadTokenHttpxAuth` (httpx, sync and async) send it as
-  `Authorization: Bearer`, and raise the same error. Nothing calls it yet.
-  - Discovery: strip `/api/v2` from `DATAROBOT_PUBLIC_API_ENDPOINT`, try RFC 8414
-    (`/.well-known/oauth-authorization-server`), then OIDC (`/.well-known/openid-configuration`).
-    The result is cached.
-  - Overrides: `DATAROBOT_OAUTH_DISCOVERY_URL` replaces discovery. `DATAROBOT_OAUTH_TOKEN_ENDPOINT`
-    is where requests go in either mode, and doesn't change the assertion `aud`.
-    `DATAROBOT_OAUTH_CLIENT_ASSERTION_AUDIENCE` sets the assertion `aud`, which is otherwise
-    discovery's `token_endpoint`.
+## 0.31.6 - 2026-11-12
+- Added `datarobot_genai.core.auth.workload_token`, which obtains and refreshes a DataRobot workload
+  identity token. Configuration comes from env, with one of two auth modes:
+  - Federation: exchanges the Kubernetes ServiceAccount token in `DATAROBOT_WORKLOAD_TOKEN_FILE`
+    (RFC 8693). Takes precedence when both modes are configured.
+  - private_key_jwt: signs a `client_credentials` assertion with `DATAROBOT_CLIENT_PRIVATE_KEY`
+    (PKCS#8 PEM), `DATAROBOT_CLIENT_KEY_ID` and `DATAROBOT_CLIENT_KEY_ALG` (default RS256).
+- The token endpoint is discovered from `DATAROBOT_PUBLIC_API_ENDPOINT` (RFC 8414, then OIDC), or set
+  with `DATAROBOT_OAUTH_DISCOVERY_URL` / `DATAROBOT_OAUTH_TOKEN_ENDPOINT`.
+- `WorkloadTokenSource` refreshes in the background every `DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS`
+  (default 3600) or at 80% of the token lifetime, whichever is sooner, and keeps the current token
+  through failures until it expires. It accepts an `audience` override and `scopes`. `token()`
+  raises `WorkloadTokenError` when no valid token is held.
+- Added `WorkloadTokenAuth` (requests) and `WorkloadTokenHttpxAuth` (httpx) to send the token as
+  `Authorization: Bearer`.
 - Core now requires `pyjwt[crypto]`.
 
 ## 0.31.5 - 2026-11-10

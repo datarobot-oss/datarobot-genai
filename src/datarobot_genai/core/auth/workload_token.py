@@ -94,8 +94,10 @@ DEFAULT_REFRESH_INTERVAL_SECONDS = 3600.0
 _REFRESH_LIFETIME_FRACTION = 0.8
 _MIN_RETRY_SECONDS = 30.0
 _MAX_RETRY_SECONDS = 300.0
-# A token this close to expiry counts as expired.
+# A token this close to expiry counts as expired. Capped at a fraction of the lifetime
+# so short tokens stay usable past the scheduled refresh.
 _EXPIRY_SKEW_SECONDS = 30.0
+_EXPIRY_SKEW_LIFETIME_FRACTION = 0.1
 
 
 class AuthMode(StrEnum):
@@ -264,7 +266,7 @@ class WorkloadTokenSource:
         self._refresh_lock = threading.Lock()
         self._lock = threading.Lock()
         self._token: str | None = None
-        self._expires_at = 0.0
+        self._valid_until = 0.0
         self._next_refresh_at = 0.0
         self._retry_delay = _MIN_RETRY_SECONDS
         self._last_error = ""
@@ -286,7 +288,7 @@ class WorkloadTokenSource:
                     target=self._run, name="datarobot-workload-token", daemon=True
                 )
                 self._thread.start()
-            if self._token is not None and self._clock() < self._expires_at - _EXPIRY_SKEW_SECONDS:
+            if self._token is not None and self._clock() < self._valid_until:
                 return self._token
             reason = self._last_error or "token expired"
         raise WorkloadTokenError(f"No valid workload token: {reason}")
@@ -303,7 +305,8 @@ class WorkloadTokenSource:
                 return
             with self._lock:
                 self._token = token
-                self._expires_at = now + expires_in
+                skew = min(_EXPIRY_SKEW_SECONDS, expires_in * _EXPIRY_SKEW_LIFETIME_FRACTION)
+                self._valid_until = now + expires_in - skew
                 # Never rely on the lifetime: refresh at the interval or before expiry.
                 self._next_refresh_at = now + min(
                     self._refresh_interval, expires_in * _REFRESH_LIFETIME_FRACTION
@@ -330,7 +333,7 @@ class WorkloadTokenSource:
             delay = self._retry_delay
             self._next_refresh_at = now + delay
             self._retry_delay = min(delay * 2, _MAX_RETRY_SECONDS)
-            kept = self._token is not None and now < self._expires_at
+            kept = self._token is not None and now < self._valid_until
         logger.error(
             "Workload token refresh failed (%s); %s; retrying in %.0fs",
             reason,
@@ -361,8 +364,15 @@ class WorkloadTokenSource:
                     )
                     continue
                 raise WorkloadTokenError(f"discovery at {url} returned HTTP {resp.status_code}")
-            endpoint = resp.json().get("token_endpoint")
+            try:
+                endpoint = resp.json().get("token_endpoint")
+            except (ValueError, AttributeError):
+                endpoint = None
             if not isinstance(endpoint, str) or not endpoint:
+                # Some gateways answer unknown paths with 200; try the next document.
+                if not last:
+                    logger.debug("No token_endpoint in %s", url)
+                    continue
                 raise WorkloadTokenError(f"discovery at {url} has no token_endpoint")
             self._discovered_endpoint = endpoint
             return endpoint
