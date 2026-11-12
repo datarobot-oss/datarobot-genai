@@ -53,10 +53,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 import httpx
 import requests
+
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
+    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +189,7 @@ def _refresh_interval_from_env(env: Mapping[str, str]) -> float:
     return DEFAULT_REFRESH_INTERVAL_SECONDS
 
 
-def _load_signing_key(private_key: str, alg: str) -> object:
+def _load_signing_key(private_key: str, alg: str) -> RSAPrivateKey | EllipticCurvePrivateKey:
     """Load the PKCS#8 PEM private key and check it fits ``alg``."""
     from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePrivateKey
     from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
@@ -358,6 +363,7 @@ class WorkloadTokenSource:
     def _client_assertion(self) -> str:
         import jwt
 
+        assert self._signing_key is not None  # only called in private_key_jwt mode
         # iat/exp are absolute claims, so these need wall-clock time.
         now = int(time.time())
         claims = {
@@ -464,7 +470,7 @@ class WorkloadTokenHttpxAuth(httpx.Auth):
 
     async def async_auth_flow(
         self, request: httpx.Request
-    ) -> AsyncGenerator[httpx.Request, httpx.Response, None]:
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
         # token() may block on the first fetch; keep it off the event loop.
         _set_bearer(request.headers, await asyncio.to_thread(self._source.token))
         yield request

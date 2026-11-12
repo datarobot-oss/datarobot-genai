@@ -500,21 +500,25 @@ class TestAudienceAndScopes:
         # GIVEN a source with its own audience and scopes
         _no_discovery(identity_env)
         responses.post(TOKEN_URL, json=_token_ok())
-        src = _source(FakeClock(), audience="https://api.other/", scopes=["read", "write", "read"])
+        src = _source(
+            FakeClock(),
+            audience="https://api.other/",
+            scopes=["agents.read", "agents.write", "agents.read"],
+        )
         # WHEN a token is requested
         src.token()
         # THEN both are sent, scopes space-separated and de-duplicated
         form = _form(responses.calls[-1])
         assert form["audience"] == "https://api.other/"
-        assert form["scope"] == "read write"
+        assert form["scope"] == "agents.read agents.write"
 
     @responses.activate
     def test_scopes_in_token_exchange(self, federation_env):
         federation_env.setenv(wt.TOKEN_ENDPOINT_ENV, TOKEN_URL)
         responses.post(TOKEN_URL, json=_token_ok())
-        _source(FakeClock(), scopes=("agents:read",)).token()
+        _source(FakeClock(), scopes=("agents.read",)).token()
         form = _form(responses.calls[-1])
-        assert form["scope"] == "agents:read"
+        assert form["scope"] == "agents.read"
         assert form["audience"] == PUBLIC_API
 
     @responses.activate
