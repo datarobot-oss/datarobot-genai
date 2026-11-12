@@ -284,8 +284,10 @@ class TestTokenRequest:
         _no_discovery(identity_env)
         responses.post(TOKEN_URL, status=401, json={"error": "invalid_client"})
         with caplog.at_level(logging.DEBUG):
-            assert _source(FakeClock()).token() is None
+            with pytest.raises(wt.WorkloadTokenError, match="invalid_client") as err:
+                _source(FakeClock()).token()
         assert "invalid_client" in caplog.text
+        assert "PRIVATE KEY" not in str(err.value)
         assert "PRIVATE KEY" not in caplog.text
         assert "client_assertion=" not in caplog.text
 
@@ -364,9 +366,10 @@ class TestRefresh:
         clock.now += 30
         src.refresh_if_due()
         assert src.seconds_until_refresh() == pytest.approx(60)
-        # WHEN it expires, THEN no token is returned
+        # WHEN it expires, THEN token() raises with the last failure
         clock.now = 1_000_000.0 + 7200
-        assert src.token() is None
+        with pytest.raises(wt.WorkloadTokenError, match="No valid workload token"):
+            src.token()
 
     @responses.activate
     def test_backoff_caps_and_resets(self, identity_env):
@@ -388,9 +391,11 @@ class TestRefresh:
         _no_discovery(identity_env)
         responses.post(TOKEN_URL, status=500)
         src = _source(FakeClock())
-        assert src.token() is None
-        # WHEN called again inside the backoff window, THEN no new request
-        assert src.token() is None
+        with pytest.raises(wt.WorkloadTokenError):
+            src.token()
+        # WHEN called again inside the backoff window, THEN it raises without a new request
+        with pytest.raises(wt.WorkloadTokenError):
+            src.token()
         assert len(responses.calls) == 1
 
     @responses.activate
@@ -399,7 +404,8 @@ class TestRefresh:
         responses.get(DISCOVERY, status=503)
         clock = FakeClock()
         src = _source(clock)
-        assert src.token() is None
+        with pytest.raises(wt.WorkloadTokenError):
+            src.token()
         responses.replace(responses.GET, DISCOVERY, json={"token_endpoint": TOKEN_URL})
         responses.post(TOKEN_URL, json=_token_ok())
         clock.now += 30
@@ -490,7 +496,8 @@ class TestFederation:
         federation_env.setenv(wt.TOKEN_ENDPOINT_ENV, TOKEN_URL)
         federation_env.token_file.unlink()
         with caplog.at_level(logging.DEBUG):
-            assert _source(FakeClock()).token() is None
+            with pytest.raises(wt.WorkloadTokenError, match="cannot read"):
+                _source(FakeClock()).token()
         assert "cannot read DATAROBOT_WORKLOAD_TOKEN_FILE" in caplog.text
 
 
@@ -723,7 +730,9 @@ class FixedToken:
     def __init__(self, token: str | None) -> None:
         self._token = token
 
-    def token(self) -> str | None:
+    def token(self) -> str:
+        if self._token is None:
+            raise wt.WorkloadTokenError("No valid workload token: down")
         return self._token
 
 
@@ -734,10 +743,10 @@ class TestAuthAdapters:
         assert out.headers["Authorization"] == "Bearer tok"
         assert out.headers["X-Other"] == "1"
 
-    def test_requests_auth_leaves_request_alone_without_token(self):
-        req = requests.Request("GET", "https://x.test/", headers={"X-Other": "1"}).prepare()
-        out = wt.WorkloadTokenAuth(FixedToken(None))(req)  # type: ignore[arg-type]
-        assert "Authorization" not in out.headers
+    def test_requests_auth_raises_without_token(self):
+        req = requests.Request("GET", "https://x.test/").prepare()
+        with pytest.raises(wt.WorkloadTokenError):
+            wt.WorkloadTokenAuth(FixedToken(None))(req)  # type: ignore[arg-type]
 
     def test_httpx_auth_sync(self):
         seen = {}
@@ -769,14 +778,11 @@ class TestAuthAdapters:
         asyncio.run(run())
         assert seen["authorization"] == "Bearer tok"
 
-    def test_httpx_auth_without_token(self):
-        seen = {}
-
+    def test_httpx_auth_raises_without_token(self):
         def handler(request: httpx.Request) -> httpx.Response:
-            seen.update(request.headers)
-            return httpx.Response(200)
+            raise AssertionError("request must not be sent")
 
         auth = wt.WorkloadTokenHttpxAuth(FixedToken(None))  # type: ignore[arg-type]
         with httpx.Client(transport=httpx.MockTransport(handler), auth=auth) as client:
-            client.get("https://x.test/")
-        assert "authorization" not in seen
+            with pytest.raises(wt.WorkloadTokenError):
+                client.get("https://x.test/")

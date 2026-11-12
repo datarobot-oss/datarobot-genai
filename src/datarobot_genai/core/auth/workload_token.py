@@ -230,7 +230,8 @@ class WorkloadTokenSource:
     """Holds a workload token and refreshes it in a background thread.
 
     ``token()`` fetches synchronously on first use and then starts the refresher.
-    On refresh failure the current token is kept until it expires.
+    On refresh failure the current token is kept until it expires; after that
+    ``token()`` raises until a background retry succeeds.
     """
 
     def __init__(
@@ -267,11 +268,15 @@ class WorkloadTokenSource:
         self._expires_at = 0.0
         self._next_refresh_at = 0.0
         self._retry_delay = _MIN_RETRY_SECONDS
+        self._last_error = ""
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
-    def token(self) -> str | None:
-        """Return the current unexpired token, or ``None`` if none could be obtained."""
+    def token(self) -> str:
+        """Return the current unexpired token.
+
+        Raises ``WorkloadTokenError`` with the last refresh failure when no valid token is held.
+        """
         with self._lock:
             needs_first = self._token is None
         if needs_first:
@@ -284,7 +289,8 @@ class WorkloadTokenSource:
                 self._thread.start()
             if self._token is not None and self._clock() < self._expires_at - _EXPIRY_SKEW_SECONDS:
                 return self._token
-            return None
+            reason = self._last_error or "token expired"
+        raise WorkloadTokenError(f"No valid workload token: {reason}")
 
     def refresh_if_due(self) -> None:
         with self._refresh_lock:
@@ -304,6 +310,7 @@ class WorkloadTokenSource:
                     self._refresh_interval, expires_in * _REFRESH_LIFETIME_FRACTION
                 )
                 self._retry_delay = _MIN_RETRY_SECONDS
+                self._last_error = ""
             logger.debug("Workload token refreshed; expires in %.0fs", expires_in)
 
     def seconds_until_refresh(self) -> float:
@@ -318,14 +325,16 @@ class WorkloadTokenSource:
             self.refresh_if_due()
 
     def _record_failure(self, now: float, exc: Exception) -> None:
+        reason = str(exc) if isinstance(exc, WorkloadTokenError) else type(exc).__name__
         with self._lock:
+            self._last_error = reason
             delay = self._retry_delay
             self._next_refresh_at = now + delay
             self._retry_delay = min(delay * 2, _MAX_RETRY_SECONDS)
             kept = self._token is not None and now < self._expires_at
         logger.error(
             "Workload token refresh failed (%s); %s; retrying in %.0fs",
-            exc if isinstance(exc, WorkloadTokenError) else type(exc).__name__,
+            reason,
             "keeping current token" if kept else "no valid token",
             delay,
         )
@@ -446,7 +455,7 @@ def _oauth_error(resp: requests.Response) -> str:
 
 
 class WorkloadTokenAuth(requests.auth.AuthBase):
-    """Sets ``Authorization: Bearer <workload token>`` on each request when a token is held."""
+    """Sets ``Authorization: Bearer <workload token>``; raises ``WorkloadTokenError`` if none."""
 
     def __init__(self, source: WorkloadTokenSource) -> None:
         self._source = source
@@ -476,9 +485,8 @@ class WorkloadTokenHttpxAuth(httpx.Auth):
         yield request
 
 
-def _set_bearer(headers: MutableMapping[str, str], token: str | None) -> None:
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+def _set_bearer(headers: MutableMapping[str, str], token: str) -> None:
+    headers["Authorization"] = f"Bearer {token}"
 
 
 _SOURCE_LOCK = threading.Lock()

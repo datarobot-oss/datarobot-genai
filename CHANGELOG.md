@@ -22,8 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the background and keeps the current one through failures until it expires. It refreshes every
   `DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS` (default 3600), or at 80% of the token's lifetime when
   that comes first.
+  `token()` raises `WorkloadTokenError`, with the last refresh failure, when it holds no valid
+  token; it does not fetch again inside the retry backoff.
   `WorkloadTokenAuth` (requests) and `WorkloadTokenHttpxAuth` (httpx, sync and async) send it as
-  `Authorization: Bearer`. Nothing calls it yet.
+  `Authorization: Bearer`, and raise the same error. Nothing calls it yet.
   - Discovery: strip `/api/v2` from `DATAROBOT_PUBLIC_API_ENDPOINT`, try RFC 8414
     (`/.well-known/oauth-authorization-server`), then OIDC (`/.well-known/openid-configuration`).
     The result is cached.
