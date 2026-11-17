@@ -157,11 +157,12 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.31.2"
+version = "0.32.0"
 source = { editable = "../" }
 
 [package.metadata]
 requires-dist = [
+    { name = "a2a-sdk", extras = ["http-server"], marker = "extra == 'dragent'", specifier = ">=0.3.20,<1.0.0" },
     { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = "==0.1.15" },
@@ -251,7 +252,6 @@ requires-dist = [
     { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.8,<2.0.0" },
     { name = "nemo-evaluator-launcher", marker = "extra == 'eval'" },
     { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.9.0" },
-    { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.9.0" },
     { name = "nvidia-nat-crewai", marker = "extra == 'crewai'", specifier = "==1.9.0" },
     { name = "nvidia-nat-langchain", extras = ["litellm"], marker = "extra == 'dragent'", specifier = "==1.9.0" },
     { name = "nvidia-nat-langchain", extras = ["litellm"], marker = "extra == 'langgraph'", specifier = "==1.9.0" },

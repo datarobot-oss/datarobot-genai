@@ -26,12 +26,12 @@ from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
 from nat.builder.context import ContextState
 from nat.builder.workflow_builder import WorkflowBuilder
-from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
 from nat.runtime.loader import load_config
 
 import datarobot_genai.dragent.plugins.auth_a2a_client  # noqa: F401 — registers authenticated_a2a_client
 import datarobot_genai.dragent.plugins.datarobot_auth_provider  # noqa: F401 — registers datarobot_api_key
 import datarobot_genai.dragent.plugins.okta_a2a_auth  # noqa: F401 — registers okta_cross_app_access
+from datarobot_genai.dragent.a2a.client.client_impl import A2AClientFunctionGroup
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry
 from datarobot_genai.dragent.plugins.auth_a2a_client import AgentCardRegistryLookup
 from datarobot_genai.dragent.plugins.auth_a2a_client import AuthenticatedA2AClientConfig

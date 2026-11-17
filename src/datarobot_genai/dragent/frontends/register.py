@@ -22,10 +22,11 @@ from nat.cli.register_workflow import register_front_end
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
-from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import field_validator
+
+from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
 
 from ..constants import A2A_MOUNT_PATH
 from ..cross_app_access_config import CrossApplicationAccessConfig
@@ -114,7 +115,7 @@ class DRAgentA2ARedactedAgentCardConfig(BaseModel):
 class DRAgentA2AConfig(BaseModel):
     """DR-owned wrapper around NAT's A2AFrontEndConfig with optional skill definitions."""
 
-    server: A2AFrontEndConfig = Field(description="NAT A2A server configuration.")
+    server: A2AFrontEndConfig = Field(description="A2A server configuration.")
     cross_application_access: CrossApplicationAccessConfig | None = Field(
         default=None,
         description=(

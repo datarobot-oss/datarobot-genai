@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import pytest
 from a2a.types import AgentSkill
-from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 
+from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenRequest

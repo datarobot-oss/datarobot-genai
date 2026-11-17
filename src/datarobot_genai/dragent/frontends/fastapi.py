@@ -26,7 +26,6 @@ from nat.front_ends.fastapi.fastapi_front_end_plugin import FastApiFrontEndPlugi
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import FastApiFrontEndPluginWorker
 from nat.front_ends.fastapi.fastapi_front_end_plugin_worker import SessionManager
 from nat.front_ends.fastapi.step_adaptor import StepAdaptor
-from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from nat.runtime.loader import WorkflowBuilder
 from pydantic import BaseModel
 from pydantic import Field
@@ -35,6 +34,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from datarobot_genai.core.utils.logging import setup_logging
+from datarobot_genai.dragent.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from datarobot_genai.dragent.registry_refresh import registry_refresh_lifespan
 from datarobot_genai.dragent.registry_warmup import warmup_registry_from_config
 

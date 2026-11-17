@@ -32,9 +32,9 @@ from nat.builder.workflow_builder import WorkflowBuilder
 from nat.data_models.config import Config
 from nat.data_models.config import GeneralConfig
 from nat.front_ends.fastapi.fastapi_front_end_config import FastApiFrontEndConfig
-from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
 from pydantic import ValidationError
 
+from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossAppTokenExchange
