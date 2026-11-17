@@ -14,8 +14,9 @@
 
 """Workload token requests and background refresh.
 
-The token refreshes every ``DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS`` (default 3600),
-or sooner when the token's lifetime is shorter. Keys and tokens are never logged.
+The token is always refreshed at 80% of its lifetime. The config's ``refresh_interval``
+(default 3600s, minimum 300s) refreshes it sooner when that comes first; ``None`` leaves
+only the lifetime-based refresh. Keys and tokens are never logged.
 """
 
 from __future__ import annotations
@@ -32,7 +33,6 @@ from typing import Any
 import jwt
 import requests
 
-from .config import MIN_REFRESH_INTERVAL_SECONDS
 from .config import WORKLOAD_TOKEN_FILE_ENV
 from .config import AuthMode
 from .config import WorkloadIdentityConfig
@@ -46,7 +46,7 @@ _TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"
 _JWT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt"
 _JWT_BEARER_ASSERTION = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 _HTTP_TIMEOUT_SECONDS = 10.0
-# Refresh by this fraction of the token lifetime when that comes before the interval.
+# Always refresh by this fraction of the token lifetime.
 _REFRESH_LIFETIME_FRACTION = 0.8
 _MIN_RETRY_SECONDS = 30.0
 _MAX_RETRY_SECONDS = 300.0
@@ -73,6 +73,7 @@ def _scope_param(scopes: Sequence[str]) -> str:
 class WorkloadTokenSource:
     """Holds a workload token and refreshes it in a background thread.
 
+    Refreshes at 80% of the token lifetime, or at ``config.refresh_interval`` if sooner.
     ``token()`` fetches synchronously on first use and then starts the refresher.
     On refresh failure the current token is kept until it expires; after that
     ``token()`` raises until a background retry succeeds.
@@ -85,7 +86,6 @@ class WorkloadTokenSource:
         session: requests.Session | None = None,
         audience: str | None = None,
         scopes: Sequence[str] = (),
-        refresh_interval: float | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """Fix ``audience`` and ``scopes`` per source, so each source caches one token.
@@ -96,12 +96,6 @@ class WorkloadTokenSource:
         self._audience = (audience or config.api_endpoint).strip()
         self._scope = _scope_param(scopes)
         self._http = session or requests.Session()
-        interval = config.refresh_interval if refresh_interval is None else refresh_interval
-        if interval < MIN_REFRESH_INTERVAL_SECONDS:
-            raise ValueError(
-                f"refresh_interval must be at least {MIN_REFRESH_INTERVAL_SECONDS:.0f}s"
-            )
-        self._refresh_interval = interval
         # Monotonic: scheduling is relative to expires_in, so wall-clock steps must not skew it.
         self._clock = clock
         self._signing_key = (
@@ -155,10 +149,11 @@ class WorkloadTokenSource:
                 self._token = token
                 skew = min(_EXPIRY_SKEW_SECONDS, expires_in * _EXPIRY_SKEW_LIFETIME_FRACTION)
                 self._valid_until = now + expires_in - skew
-                # Never rely on the lifetime: refresh at the interval or before expiry.
-                self._next_refresh_at = now + min(
-                    self._refresh_interval, expires_in * _REFRESH_LIFETIME_FRACTION
-                )
+                # Refresh before expiry, or at the interval when that comes first.
+                delay = expires_in * _REFRESH_LIFETIME_FRACTION
+                if self._config.refresh_interval is not None:
+                    delay = min(delay, self._config.refresh_interval)
+                self._next_refresh_at = now + delay
                 self._retry_delay = _MIN_RETRY_SECONDS
                 self._last_error = ""
             logger.debug("Workload token refreshed; expires in %.0fs", expires_in)

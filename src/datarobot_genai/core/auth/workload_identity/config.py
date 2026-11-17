@@ -26,6 +26,10 @@ Two auth modes:
 The client id is ``DATAROBOT_CLIENT_ID`` (``WORKLOAD_ID`` as a fallback). The
 token endpoint comes from overrides or discovery off ``DATAROBOT_PUBLIC_API_ENDPOINT``,
 which is also the default requested audience.
+
+The token is always refreshed at 80% of its lifetime. ``DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS``
+(default 3600, minimum 300) refreshes it sooner when that comes first; ``0`` or ``none`` turns
+this off, leaving only the lifetime-based refresh.
 """
 
 from __future__ import annotations
@@ -60,8 +64,9 @@ REFRESH_INTERVAL_ENV = "DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS"
 
 # Tokens are often long-lived to ride out an outage; refreshing more often limits exposure.
 DEFAULT_REFRESH_INTERVAL_SECONDS = 3600.0
-# Floor for the configured interval, so a typo cannot hammer the auth server.
-MIN_REFRESH_INTERVAL_SECONDS = 30.0
+# Floor for the interval, so a low setting cannot hammer the auth server.
+MIN_REFRESH_INTERVAL_SECONDS = 300.0
+_REFRESH_INTERVAL_OFF = frozenset({"0", "none"})
 
 _API_V2_SUFFIX = "/api/v2"
 # FIPS-approved private_key_jwt algs. EC algs pin the curve.
@@ -90,7 +95,17 @@ class WorkloadIdentityConfig:
     discovery_url: str = ""
     token_endpoint: str = ""
     assertion_audience: str = ""
-    refresh_interval: float = DEFAULT_REFRESH_INTERVAL_SECONDS
+    # Seconds between refreshes, on top of the lifetime-based one; None for lifetime only.
+    refresh_interval: float | None = DEFAULT_REFRESH_INTERVAL_SECONDS
+
+    def __post_init__(self) -> None:
+        if (
+            self.refresh_interval is not None
+            and self.refresh_interval < MIN_REFRESH_INTERVAL_SECONDS
+        ):
+            raise ValueError(
+                f"refresh_interval must be None or at least {MIN_REFRESH_INTERVAL_SECONDS:.0f}s"
+            )
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> WorkloadIdentityConfig | None:
@@ -143,10 +158,12 @@ class WorkloadIdentityConfig:
         ]
 
 
-def _refresh_interval_from_env(env: Mapping[str, str]) -> float:
+def _refresh_interval_from_env(env: Mapping[str, str]) -> float | None:
     raw = env.get(REFRESH_INTERVAL_ENV, "").strip()
     if not raw:
         return DEFAULT_REFRESH_INTERVAL_SECONDS
+    if raw.lower() in _REFRESH_INTERVAL_OFF:
+        return None
     try:
         value = float(raw)
     except ValueError:

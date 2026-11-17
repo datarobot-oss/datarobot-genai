@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import time
 from urllib.parse import parse_qs
@@ -324,36 +325,52 @@ class TestRefresh:
         # THEN it refreshes at the interval
         assert src.seconds_until_refresh() == pytest.approx(900)
 
-    @pytest.mark.parametrize("raw", ["0", "-5", "soon"])
+    @pytest.mark.parametrize("raw", ["-5", "soon"])
     def test_bad_refresh_interval_uses_default(self, identity_env, raw):
         identity_env.setenv(wt.REFRESH_INTERVAL_ENV, raw)
         config = wt.WorkloadIdentityConfig.from_env()
         assert config is not None
         assert config.refresh_interval == wt.DEFAULT_REFRESH_INTERVAL_SECONDS
 
-    def test_short_refresh_interval_env_is_raised_to_minimum(self, identity_env):
-        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, "5")
+    @pytest.mark.parametrize("raw", ["0", "none", "None"])
+    def test_refresh_interval_env_can_be_turned_off(self, identity_env, raw):
+        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, raw)
         config = wt.WorkloadIdentityConfig.from_env()
         assert config is not None
-        assert config.refresh_interval == wt.MIN_REFRESH_INTERVAL_SECONDS
+        assert config.refresh_interval is None
 
-    @pytest.mark.parametrize("interval", [0, 5, -1])
+    def test_short_refresh_interval_env_is_raised_to_minimum(self, identity_env):
+        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, "60")
+        config = wt.WorkloadIdentityConfig.from_env()
+        assert config is not None
+        assert config.refresh_interval == wt.MIN_REFRESH_INTERVAL_SECONDS == 300
+
+    @pytest.mark.parametrize("interval", [-1, 0, 30, 299])
     def test_refresh_interval_below_minimum_raises(self, identity_env, interval):
         config = wt.WorkloadIdentityConfig.from_env()
         assert config is not None
-        with pytest.raises(ValueError, match="at least 30s"):
-            wt.WorkloadTokenSource(config, refresh_interval=interval)
+        with pytest.raises(ValueError, match="at least 300s"):
+            dataclasses.replace(config, refresh_interval=interval)
 
     @responses.activate
-    def test_explicit_refresh_interval_overrides_config(self, identity_env):
+    def test_minimum_refresh_interval_is_used(self, identity_env):
         _no_discovery(identity_env)
+        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, "300")
         responses.post(TOKEN_URL, json=_token_ok())
-        config = wt.WorkloadIdentityConfig.from_env()
-        assert config is not None
-        src = wt.WorkloadTokenSource(config, refresh_interval=60, clock=FakeClock())
-        src._thread = object()  # type: ignore[assignment]
+        src = _source(FakeClock())
         src.token()
-        assert src.seconds_until_refresh() == pytest.approx(60)
+        assert src.seconds_until_refresh() == pytest.approx(300)
+
+    @responses.activate
+    def test_no_refresh_interval_uses_lifetime_only(self, identity_env):
+        # GIVEN early refreshes turned off and a 2-hour token
+        _no_discovery(identity_env)
+        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, "none")
+        responses.post(TOKEN_URL, json=_token_ok(expires_in=7200))
+        src = _source(FakeClock())
+        src.token()
+        # THEN it refreshes at 80% of the lifetime, not at the 3600s default
+        assert src.seconds_until_refresh() == pytest.approx(5760)
 
     @responses.activate
     def test_retry_is_scheduled_from_failure_time(self, identity_env):

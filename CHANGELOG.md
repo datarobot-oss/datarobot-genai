@@ -13,10 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     (PKCS#8 PEM), `DATAROBOT_CLIENT_KEY_ID` and `DATAROBOT_CLIENT_KEY_ALG` (default RS256).
 - The token endpoint is discovered from `DATAROBOT_PUBLIC_API_ENDPOINT` (RFC 8414, then OIDC), or set
   with `DATAROBOT_OAUTH_DISCOVERY_URL` / `DATAROBOT_OAUTH_TOKEN_ENDPOINT`.
-- `WorkloadTokenSource` refreshes in the background every `DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS`
-  (default 3600, minimum 30) or at 80% of the token lifetime, whichever is sooner, and keeps the current token
-  through failures until it expires. It accepts an `audience` override and `scopes`. `token()`
-  raises `WorkloadTokenError` when no valid token is held.
+- `WorkloadTokenSource` refreshes in the background at 80% of the token lifetime, and keeps the
+  current token through failures until it expires. `DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS`
+  (default 3600, minimum 300) refreshes sooner when that comes first; `0` or `none` turns this off.
+  It accepts an `audience` override and `scopes`. `token()` raises `WorkloadTokenError` when no
+  valid token is held.
 - Added `WorkloadTokenAuth` (requests) and `WorkloadTokenHttpxAuth` (httpx), in
   `workload_identity.auth`, to send the token as `Authorization: Bearer`.
 - Core now requires `pyjwt[crypto]`.
