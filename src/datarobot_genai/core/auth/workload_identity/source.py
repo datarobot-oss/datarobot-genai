@@ -26,10 +26,13 @@ import time
 import uuid
 from collections.abc import Callable
 from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
 
 import jwt
 import requests
 
+from .config import MIN_REFRESH_INTERVAL_SECONDS
 from .config import WORKLOAD_TOKEN_FILE_ENV
 from .config import AuthMode
 from .config import WorkloadIdentityConfig
@@ -93,7 +96,12 @@ class WorkloadTokenSource:
         self._audience = (audience or config.api_endpoint).strip()
         self._scope = _scope_param(scopes)
         self._http = session or requests.Session()
-        self._refresh_interval = refresh_interval or config.refresh_interval
+        interval = config.refresh_interval if refresh_interval is None else refresh_interval
+        if interval < MIN_REFRESH_INTERVAL_SECONDS:
+            raise ValueError(
+                f"refresh_interval must be at least {MIN_REFRESH_INTERVAL_SECONDS:.0f}s"
+            )
+        self._refresh_interval = interval
         # Monotonic: scheduling is relative to expires_in, so wall-clock steps must not skew it.
         self._clock = clock
         self._signing_key = (
@@ -141,7 +149,7 @@ class WorkloadTokenSource:
             try:
                 token, expires_in = self._request_token()
             except Exception as exc:
-                self._record_failure(now, exc)
+                self._record_failure(self._clock(), exc)
                 return
             with self._lock:
                 self._token = token
@@ -184,39 +192,30 @@ class WorkloadTokenSource:
     def _discovered_token_endpoint(self) -> str:
         if self._discovered_endpoint:
             return self._discovered_endpoint
-        urls = self._config.discovery_urls()
-        for i, url in enumerate(urls):
-            last = i + 1 == len(urls)
+        # Try each URL in order; raise the last failure if none works.
+        failure = "no discovery URL"
+        for url in self._config.discovery_urls():
             try:
                 resp = self._http.get(url, timeout=_HTTP_TIMEOUT_SECONDS)
             except requests.RequestException as exc:
-                if last:
-                    raise WorkloadTokenError(
-                        f"discovery at {url} failed ({type(exc).__name__})"
-                    ) from None
-                logger.debug("Discovery at %s failed (%s)", url, type(exc).__name__)
+                failure = f"discovery at {url} failed ({type(exc).__name__})"
+                logger.debug("%s", failure)
                 continue
             if resp.status_code != 200:
-                if not last:
-                    # Many servers publish only the OIDC document; a 404 here is normal.
-                    logger.debug(
-                        "No authorization server metadata at %s (HTTP %s)", url, resp.status_code
-                    )
-                    continue
-                raise WorkloadTokenError(f"discovery at {url} returned HTTP {resp.status_code}")
-            try:
-                endpoint = resp.json().get("token_endpoint")
-            except (ValueError, AttributeError):
-                endpoint = None
+                # Many servers publish only the OIDC document; a 404 here is normal.
+                failure = f"discovery at {url} returned HTTP {resp.status_code}"
+                logger.debug("%s", failure)
+                continue
+            body = _json_object(resp)
+            endpoint = body.get("token_endpoint") if body is not None else None
             if not isinstance(endpoint, str) or not endpoint:
                 # Some gateways answer unknown paths with 200; try the next document.
-                if not last:
-                    logger.debug("No token_endpoint in %s", url)
-                    continue
-                raise WorkloadTokenError(f"discovery at {url} has no token_endpoint")
+                failure = f"discovery at {url} has no token_endpoint"
+                logger.debug("%s", failure)
+                continue
             self._discovered_endpoint = endpoint
             return endpoint
-        raise WorkloadTokenError("no discovery URL")  # pragma: no cover
+        raise WorkloadTokenError(failure)
 
     def _client_assertion(self) -> str:
         assert self._signing_key is not None  # only called in private_key_jwt mode
@@ -276,12 +275,17 @@ class WorkloadTokenSource:
     def _request_token(self) -> tuple[str, float]:
         form = self._request_form()
         url = self._config.token_endpoint or self._discovered_token_endpoint()
-        resp = self._http.post(url, data=form, timeout=_HTTP_TIMEOUT_SECONDS)
+        try:
+            resp = self._http.post(url, data=form, timeout=_HTTP_TIMEOUT_SECONDS)
+        except requests.RequestException as exc:
+            raise WorkloadTokenError(f"token request failed ({type(exc).__name__})") from None
         if resp.status_code != 200:
             raise WorkloadTokenError(
                 f"token endpoint returned HTTP {resp.status_code} ({_oauth_error(resp)})"
             )
-        body = resp.json()
+        body = _json_object(resp)
+        if body is None:
+            raise WorkloadTokenError("token response is not a JSON object")
         token = body.get("access_token")
         if not isinstance(token, str) or not token:
             raise WorkloadTokenError("token response has no access_token")
@@ -294,36 +298,48 @@ class WorkloadTokenSource:
         return token, expires_in
 
 
-def _oauth_error(resp: requests.Response) -> str:
+def _json_object(resp: requests.Response) -> dict[str, Any] | None:
+    """Return the body as a JSON object, or ``None`` if it is not one."""
     try:
-        return str(resp.json().get("error", "unknown"))
+        body = resp.json()
     except ValueError:
-        return "unknown"
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _oauth_error(resp: requests.Response) -> str:
+    body = _json_object(resp)
+    return str(body.get("error", "unknown")) if body is not None else "unknown"
+
+
+@dataclass
+class _SourceState:
+    source: WorkloadTokenSource | None = None
+    resolved: bool = False
 
 
 _SOURCE_LOCK = threading.Lock()
-_SOURCE_STATE: dict[str, WorkloadTokenSource | None | bool] = {"source": None, "resolved": False}
+_SOURCE_STATE = _SourceState()
 
 
 def get_workload_token_source() -> WorkloadTokenSource | None:
     """Process-wide token source from env; ``None`` when workload identity is not configured."""
     with _SOURCE_LOCK:
-        if not _SOURCE_STATE["resolved"]:
-            _SOURCE_STATE["resolved"] = True
+        if not _SOURCE_STATE.resolved:
+            _SOURCE_STATE.resolved = True
             config = WorkloadIdentityConfig.from_env()
             if config is not None:
                 try:
-                    _SOURCE_STATE["source"] = WorkloadTokenSource(config)
+                    _SOURCE_STATE.source = WorkloadTokenSource(config)
                 except WorkloadTokenError as exc:
                     logger.error("Workload identity disabled: %s", exc)
-        source = _SOURCE_STATE["source"]
-        return source if isinstance(source, WorkloadTokenSource) else None
+        return _SOURCE_STATE.source
 
 
 def _reset_workload_token_source() -> None:
     """Test hook: forget the cached process-wide source."""
     with _SOURCE_LOCK:
-        source = _SOURCE_STATE["source"]
-        if isinstance(source, WorkloadTokenSource):
-            source.close()
-        _SOURCE_STATE.update(source=None, resolved=False)
+        if _SOURCE_STATE.source is not None:
+            _SOURCE_STATE.source.close()
+        _SOURCE_STATE.source = None
+        _SOURCE_STATE.resolved = False

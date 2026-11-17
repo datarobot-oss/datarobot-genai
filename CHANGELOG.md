@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The token endpoint is discovered from `DATAROBOT_PUBLIC_API_ENDPOINT` (RFC 8414, then OIDC), or set
   with `DATAROBOT_OAUTH_DISCOVERY_URL` / `DATAROBOT_OAUTH_TOKEN_ENDPOINT`.
 - `WorkloadTokenSource` refreshes in the background every `DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS`
-  (default 3600) or at 80% of the token lifetime, whichever is sooner, and keeps the current token
+  (default 3600, minimum 30) or at 80% of the token lifetime, whichever is sooner, and keeps the current token
   through failures until it expires. It accepts an `audience` override and `scopes`. `token()`
   raises `WorkloadTokenError` when no valid token is held.
 - Added `WorkloadTokenAuth` (requests) and `WorkloadTokenHttpxAuth` (httpx), in

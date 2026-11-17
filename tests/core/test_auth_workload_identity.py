@@ -331,6 +331,46 @@ class TestRefresh:
         assert config is not None
         assert config.refresh_interval == wt.DEFAULT_REFRESH_INTERVAL_SECONDS
 
+    def test_short_refresh_interval_env_is_raised_to_minimum(self, identity_env):
+        identity_env.setenv(wt.REFRESH_INTERVAL_ENV, "5")
+        config = wt.WorkloadIdentityConfig.from_env()
+        assert config is not None
+        assert config.refresh_interval == wt.MIN_REFRESH_INTERVAL_SECONDS
+
+    @pytest.mark.parametrize("interval", [0, 5, -1])
+    def test_refresh_interval_below_minimum_raises(self, identity_env, interval):
+        config = wt.WorkloadIdentityConfig.from_env()
+        assert config is not None
+        with pytest.raises(ValueError, match="at least 30s"):
+            wt.WorkloadTokenSource(config, refresh_interval=interval)
+
+    @responses.activate
+    def test_explicit_refresh_interval_overrides_config(self, identity_env):
+        _no_discovery(identity_env)
+        responses.post(TOKEN_URL, json=_token_ok())
+        config = wt.WorkloadIdentityConfig.from_env()
+        assert config is not None
+        src = wt.WorkloadTokenSource(config, refresh_interval=60, clock=FakeClock())
+        src._thread = object()  # type: ignore[assignment]
+        src.token()
+        assert src.seconds_until_refresh() == pytest.approx(60)
+
+    @responses.activate
+    def test_retry_is_scheduled_from_failure_time(self, identity_env):
+        # GIVEN a token request that fails after 10s
+        _no_discovery(identity_env)
+        clock = FakeClock()
+
+        def slow_failure(request):
+            clock.now += 10
+            return (503, {}, "")
+
+        responses.add_callback(responses.POST, TOKEN_URL, callback=slow_failure)
+        src = _source(clock)
+        src.refresh_if_due()
+        # THEN the full backoff runs from when the request failed
+        assert src.seconds_until_refresh() == pytest.approx(30)
+
     @responses.activate
     def test_interval_longer_than_lifetime_refreshes_before_expiry(self, identity_env):
         # GIVEN an interval longer than the token lifetime
@@ -431,6 +471,29 @@ class TestRefresh:
         responses.get(DISCOVERY, json={"token_endpoint": TOKEN_URL})
         responses.post(TOKEN_URL, json=_token_ok())
         assert _source(FakeClock()).token() == "tok-1"
+
+    @responses.activate
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"body": "<html>oops</html>", "content_type": "text/html"},
+            {"json": ["not", "an", "object"]},
+        ],
+    )
+    def test_token_response_not_json_object_raises(self, identity_env, body):
+        _no_discovery(identity_env)
+        responses.post(TOKEN_URL, status=200, **body)
+        with pytest.raises(wt.WorkloadTokenError, match="not a JSON object"):
+            _source(FakeClock()).token()
+
+    @responses.activate
+    def test_token_request_connection_error_raises_workload_error(self, identity_env):
+        _no_discovery(identity_env)
+        responses.post(TOKEN_URL, body=requests.ConnectionError("boom"))
+        with pytest.raises(
+            wt.WorkloadTokenError, match=r"token request failed \(ConnectionError\)"
+        ):
+            _source(FakeClock()).token()
 
     @responses.activate
     def test_discovery_without_token_endpoint_anywhere_raises(self, identity_env):

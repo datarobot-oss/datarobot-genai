@@ -60,6 +60,8 @@ REFRESH_INTERVAL_ENV = "DATAROBOT_WORKLOAD_TOKEN_REFRESH_SECONDS"
 
 # Tokens are often long-lived to ride out an outage; refreshing more often limits exposure.
 DEFAULT_REFRESH_INTERVAL_SECONDS = 3600.0
+# Floor for the configured interval, so a typo cannot hammer the auth server.
+MIN_REFRESH_INTERVAL_SECONDS = 30.0
 
 _API_V2_SUFFIX = "/api/v2"
 # FIPS-approved private_key_jwt algs. EC algs pin the curve.
@@ -149,12 +151,23 @@ def _refresh_interval_from_env(env: Mapping[str, str]) -> float:
         value = float(raw)
     except ValueError:
         value = 0.0
-    if value > 0:
-        return value
-    logger.warning(
-        "Ignoring %s=%r; using %.0fs", REFRESH_INTERVAL_ENV, raw, DEFAULT_REFRESH_INTERVAL_SECONDS
-    )
-    return DEFAULT_REFRESH_INTERVAL_SECONDS
+    if value <= 0:
+        logger.warning(
+            "Ignoring %s=%r; using %.0fs",
+            REFRESH_INTERVAL_ENV,
+            raw,
+            DEFAULT_REFRESH_INTERVAL_SECONDS,
+        )
+        return DEFAULT_REFRESH_INTERVAL_SECONDS
+    if value < MIN_REFRESH_INTERVAL_SECONDS:
+        logger.warning(
+            "Raising %s=%r to the %.0fs minimum",
+            REFRESH_INTERVAL_ENV,
+            raw,
+            MIN_REFRESH_INTERVAL_SECONDS,
+        )
+        return MIN_REFRESH_INTERVAL_SECONDS
+    return value
 
 
 def load_signing_key(private_key: str, alg: str) -> RSAPrivateKey | EllipticCurvePrivateKey:

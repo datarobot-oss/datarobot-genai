@@ -33,6 +33,7 @@ from .config import DEFAULT_REFRESH_INTERVAL_SECONDS
 from .config import DISCOVERY_URL_ENV
 from .config import KEY_ALG_ENV
 from .config import KEY_ID_ENV
+from .config import MIN_REFRESH_INTERVAL_SECONDS
 from .config import PRIVATE_KEY_ENV
 from .config import PUBLIC_API_ENDPOINT_ENV
 from .config import REFRESH_INTERVAL_ENV
@@ -50,6 +51,7 @@ __all__ = [
     "CLIENT_ID_ENV",
     "DEFAULT_KEY_ALG",
     "DEFAULT_REFRESH_INTERVAL_SECONDS",
+    "MIN_REFRESH_INTERVAL_SECONDS",
     "DISCOVERY_URL_ENV",
     "KEY_ALG_ENV",
     "KEY_ID_ENV",
