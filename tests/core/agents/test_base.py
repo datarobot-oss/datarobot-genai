@@ -488,6 +488,32 @@ async def test_invoke_single_message_forwards_invoke_stream() -> None:
     assert rows == [(a, None, metrics), (b, None, metrics)]
 
 
+async def test_invoke_single_message_closes_invoke_when_consumer_stops_early() -> None:
+    # GIVEN a stub whose invoke records when it is closed
+    agent = SingleMessageTestAgent(*(TextMessageContentEvent(message_id="m", delta="x"),) * 2)
+    invoke_stream = agent.invoke
+
+    closed = False
+
+    async def tracking_invoke(run_agent_input: RunAgentInput) -> Any:
+        nonlocal closed
+        try:
+            async for row in invoke_stream(run_agent_input):
+                yield row
+        finally:
+            closed = True
+
+    agent.invoke = tracking_invoke  # type: ignore[method-assign]
+
+    # WHEN the consumer takes one row and closes the stream
+    rows = agent.invoke_single_message("hi")
+    await anext(rows)
+    await rows.aclose()
+
+    # THEN invoke is closed at once, not left to garbage collection
+    assert closed
+
+
 async def test_invoke_single_message_builds_run_input_with_user_message() -> None:
     # GIVEN one emitted event
     event = TextMessageContentEvent(message_id="m", delta="x")

@@ -463,6 +463,41 @@ class ErroringAGUIAgent(BaseAgent):
         yield (RunErrorEvent(message="boom", code="RUN_ERROR"), None, UsageMetrics())
 
 
+class ClosingAgent(AGUIAgent):
+    """Agent that records when its ``invoke`` generator is closed."""
+
+    closed = False
+
+    async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
+        try:
+            yield (RunStartedEvent(thread_id="t", run_id="r"), None, UsageMetrics())
+            yield (RunErrorEvent(message="boom", code="RUN_ERROR"), None, UsageMetrics())
+            yield (TextMessageStartEvent(message_id="m0"), None, UsageMetrics())
+        finally:
+            self.closed = True
+
+
+@pytest.mark.parametrize("stream", [True, False])
+async def test_agent_chat_completion_wrapper_closes_invoke_without_waiting_for_gc(
+    stream: bool,
+) -> None:
+    # GIVEN an agent whose run is cut short: a dropped stream, or a terminal RUN_ERROR
+    agent = ClosingAgent()
+    params = {"messages": [{"role": "user", "content": "hi"}], "stream": stream}
+
+    # WHEN the consumer stops early
+    if stream:
+        generator = await agent_chat_completion_wrapper(agent, params, noop_mcp_tools_factory)
+        await anext(generator)
+        await generator.aclose()
+    else:
+        with pytest.raises(RuntimeError, match="boom"):
+            await agent_chat_completion_wrapper(agent, params, noop_mcp_tools_factory)
+
+    # THEN the run is closed at once, so what it holds (such as CrewAI's lock) is released
+    assert agent.closed
+
+
 async def test_agent_chat_completion_wrapper_non_streaming_raises_on_run_error() -> None:
     # GIVEN an agent that ends the run with a terminal RUN_ERROR
     params = {"messages": [{"role": "user", "content": "hi"}], "stream": False}

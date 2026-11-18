@@ -16,7 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import multiprocessing
 import os
+import threading
+import time
+import uuid
 from collections.abc import Iterator
 from datetime import UTC
 from datetime import datetime
@@ -60,6 +64,8 @@ from datarobot_dome.constants import DEFAULT_RESPONSE_COLUMN_NAME
 from datarobot_dome.constants import DISABLE_MODERATION_RUNTIME_PARAM_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
+from datarobot_dome.custom_metrics import CustomMetricSession
+from datarobot_dome.pipeline.llm_pipeline import LLMPipeline
 from datarobot_dome.request_credentials import resolve_datarobot_token
 from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
@@ -96,6 +102,7 @@ from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
 from datarobot_genai.dragent.plugins.datarobot_dragent_normalization import (
     DataRobotDRAgentNormalizationMiddleware,
 )
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import _GUARD_METRICS_REPORTER
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     ALLOW_EXTERNAL_ACCESS_TOKENS_RUNTIME_PARAM_NAME,
 )
@@ -111,6 +118,7 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _clear_moderation_invoke_state_if_set,
 )
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import _GuardMetricsReporter
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _moderation_invoke_state_ctx,
 )
@@ -120,6 +128,7 @@ from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _prescore_datarobot_moderations_from_df,
 )
+from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import _report_guard_metrics
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import _require_workflow_input
 from datarobot_genai.dragent.plugins.datarobot_moderation_middleware import (
     _set_moderation_invoke_state,
@@ -351,6 +360,11 @@ def _pipeline_mock() -> MagicMock:
     pipeline.get_new_metrics_payload.return_value = None
     pipeline.extra_model_output_for_chat_enabled = False
     return pipeline
+
+
+def _drain_guard_metrics() -> None:
+    """Wait until every queued guard-metric row has been reported."""
+    _GUARD_METRICS_REPORTER.join()
 
 
 def _moderation_mock(pipeline: MagicMock) -> MagicMock:
@@ -1054,6 +1068,11 @@ async def test_pre_invoke_blocks_and_sets_output(builder_mock: MagicMock) -> Non
         for ev in out.output.events
     )
     assert out.output.datarobot_moderations is None
+    # THEN the blocked prompt's guard metrics (blocked counter, scores) are reported once
+    _drain_guard_metrics()
+    pipeline.report_custom_metrics.assert_called_once()
+    (row,) = pipeline.report_custom_metrics.call_args.args
+    assert row.equals(prescore_df)
 
 
 async def test_pre_invoke_blocked_includes_datarobot_moderations_from_prescore_metrics(
@@ -1389,6 +1408,289 @@ async def test_post_invoke_rewrites_completion_when_postscore_succeeds(
     assert ctx.output is not None
     text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
     assert text == "final-out"
+
+
+async def _post_invoke_with_report(
+    builder_mock: MagicMock,
+    pipeline: MagicMock,
+    prescore: pd.DataFrame,
+    postscore: pd.DataFrame,
+    output: DRAgentEventResponse | None = None,
+) -> InvocationContext:
+    pipeline.get_postscore_guards.return_value = [MagicMock()]
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_response_async.return_value = (
+        EvaluationResult(blocked=False),
+        0.0,
+        postscore,
+    )
+    ctx = _invocation(_make_run_input(), output=output or _text_response("model-out"))
+    with patch(
+        "datarobot_genai.dragent.plugins.datarobot_moderation_middleware.load_llm_moderation_pipeline",
+        return_value=moderation,
+    ):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        _set_moderation_invoke_state(prompt="p", prescore_df=prescore, latency_so_far=0.0)
+        try:
+            await mw.post_invoke(ctx)
+        finally:
+            _clear_moderation_invoke_state_if_set()
+    _drain_guard_metrics()
+    return ctx
+
+
+async def test_post_invoke_reports_prompt_and_response_guard_metrics_as_one_row(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN prescore and postscore data frames with different guard columns
+    # WHEN post_invoke finishes the moderation of an answered request
+    # THEN the guard metrics are reported once, as a single row holding both stages
+    pipeline = _pipeline_mock()
+    prescore = pd.DataFrame({PROMPT_COL: ["p"], "pii_score": [0.1]})
+    postscore = pd.DataFrame({RESPONSE_COL: ["r"], "tokens_score": [7]})
+
+    await _post_invoke_with_report(builder_mock, pipeline, prescore, postscore)
+
+    pipeline.report_custom_metrics.assert_called_once()
+    (row,) = pipeline.report_custom_metrics.call_args.args
+    assert len(row) == 1
+    assert set(prescore.columns) | set(postscore.columns) <= set(row.columns)
+    assert row["tokens_score"].iloc[0] == postscore["tokens_score"].iloc[0]
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        _text_response("   "),
+        DRAgentEventResponse(
+            events=[
+                ToolCallStartEvent(
+                    tool_call_id="tc1", tool_call_name="noop", parent_message_id=None
+                )
+            ],
+            usage_metrics=default_usage_metrics(),
+        ),
+    ],
+    ids=["whitespace-text", "tool-call-only"],
+)
+async def test_post_invoke_reports_prompt_metrics_when_there_is_no_text_to_postscore(
+    builder_mock: MagicMock, output: DRAgentEventResponse
+) -> None:
+    # GIVEN a prompt that passed its guards and a reply without assistant text
+    pipeline = _pipeline_mock()
+    prescore = _prescore_df_ok("p")
+
+    # WHEN post_invoke has nothing to postscore
+    ctx = await _post_invoke_with_report(builder_mock, pipeline, prescore, pd.DataFrame(), output)
+
+    # THEN the reply is untouched and the prompt-stage metrics are still reported once
+    assert ctx.output is output
+    pipeline.report_custom_metrics.assert_called_once()
+    (row,) = pipeline.report_custom_metrics.call_args.args
+    assert row.equals(prescore)
+
+
+async def test_post_invoke_reporting_failure_does_not_fail_the_request(
+    builder_mock: MagicMock,
+) -> None:
+    # GIVEN reporting guard metrics raises
+    # WHEN post_invoke finishes the moderation of an answered request
+    # THEN the moderated answer is still returned, not a moderation error
+    pipeline = _pipeline_mock()
+    pipeline.report_custom_metrics.side_effect = RuntimeError("metrics backend down")
+
+    ctx = await _post_invoke_with_report(
+        builder_mock, pipeline, pd.DataFrame({PROMPT_COL: ["p"]}), pd.DataFrame()
+    )
+
+    text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
+    assert text == "model-out"
+
+
+async def test_post_invoke_can_upload_custom_metrics(builder_mock: MagicMock) -> None:
+    # GIVEN DOME's synchronous uploader, which drives its own event loop
+    session = CustomMetricSession("deployment", "https://metrics.test/upload")
+    client = MagicMock(bulk_upload_custom_metrics=AsyncMock())
+    prescore = _prescore_df_ok("prompt")
+    payload = {
+        "buckets": [
+            session.create_individual_payload(
+                metric_id=uuid.uuid4(),
+                value=len(prescore),
+                association_id=prescore.index[0],
+            )
+        ]
+    }
+    pipeline = _pipeline_mock()
+    pipeline.report_custom_metrics.side_effect = lambda row: session.upload_values(client, payload)
+
+    # WHEN an async request finishes moderation
+    await _post_invoke_with_report(builder_mock, pipeline, prescore, pd.DataFrame())
+
+    # THEN the real uploader reaches the HTTP client without nesting event loops
+    client.bulk_upload_custom_metrics.assert_awaited_once_with(
+        session.bulk_upload_url, payload, session.deployment_id
+    )
+
+
+async def test_guard_metric_uploads_never_overlap() -> None:
+    # GIVEN reporters that record how many uploads run at once
+    running = peak = 0
+    guard = threading.Lock()
+
+    def upload(_row: pd.DataFrame) -> None:
+        nonlocal running, peak
+        with guard:
+            running += 1
+            peak = max(peak, running)
+        time.sleep(0.02)
+        with guard:
+            running -= 1
+
+    pipelines = [MagicMock(report_custom_metrics=upload) for _ in range(4)]
+
+    # WHEN several requests report at the same time
+    assert all(_report_guard_metrics(p, _prescore_df_ok("p")) for p in pipelines)
+    _drain_guard_metrics()
+
+    # THEN DOME's shared upload loop only ever sees one upload at a time
+    assert peak == 1
+
+
+def test_guard_metric_rows_are_dropped_when_too_many_are_pending() -> None:
+    # GIVEN a reporter holding at most one pending row, its worker stuck on an earlier row
+    max_pending = 1
+    reporter = _GuardMetricsReporter(max_pending)
+    started, release = threading.Event(), threading.Event()
+    reported: list[pd.DataFrame] = []
+
+    def upload(row: pd.DataFrame) -> None:
+        started.set()
+        release.wait(5)
+        reported.append(row)
+
+    pipeline = MagicMock(report_custom_metrics=upload)
+    assert reporter.submit(pipeline, _prescore_df_ok("in-flight"), None)
+    assert started.wait(5)
+
+    # WHEN more rows arrive than may wait
+    queued = [reporter.submit(pipeline, _prescore_df_ok(f"p{i}"), None) for i in range(3)]
+    release.set()
+    reporter.join()
+
+    # THEN the rows over the limit are dropped instead of piling up
+    assert queued.count(True) == max_pending
+    assert len(reported) == 1 + max_pending
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires fork")
+def test_guard_metric_reporter_restarts_after_fork_with_a_locked_parent() -> None:
+    # GIVEN a fork while the parent holds the reporter's start lock
+    reporter = _GuardMetricsReporter(max_pending=1)
+    pipeline = _pipeline_mock()
+    context = multiprocessing.get_context("fork")
+    receiver, sender = context.Pipe(duplex=False)
+
+    def report_in_child() -> None:
+        reporter.submit(pipeline, _prescore_df_ok("child"), None)
+        reporter.join()
+        sender.send(pipeline.report_custom_metrics.called)
+
+    child = context.Process(target=report_in_child)
+    with reporter._start_lock:
+        child.start()
+    try:
+        # WHEN the child submits metrics
+        child.join(timeout=5)
+        # THEN it starts its own worker instead of waiting on an inherited lock forever
+        assert child.exitcode == 0
+        assert receiver.poll()
+        assert receiver.recv()
+    finally:
+        if child.is_alive():
+            child.terminate()
+        child.join()
+        receiver.close()
+        sender.close()
+
+
+async def test_post_invoke_does_not_wait_for_the_upload(builder_mock: MagicMock) -> None:
+    # GIVEN an upload that is stuck until released
+    release = threading.Event()
+    pipeline = _pipeline_mock()
+    pipeline.report_custom_metrics.side_effect = lambda row: release.wait(5)
+    moderation = _moderation_mock(pipeline)
+    moderation.evaluate_response_async.return_value = (
+        EvaluationResult(blocked=False),
+        0.0,
+        pd.DataFrame(),
+    )
+    ctx = _invocation(_make_run_input(), output=_text_response("model-out"))
+
+    # WHEN post_invoke finishes the moderation of an answered request
+    with patch(f"{_MODULE}.load_llm_moderation_pipeline", return_value=moderation):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        _set_moderation_invoke_state(
+            prompt="p", prescore_df=_prescore_df_ok("p"), latency_so_far=0.0
+        )
+        try:
+            await asyncio.wait_for(mw.post_invoke(ctx), timeout=1)
+        finally:
+            _clear_moderation_invoke_state_if_set()
+            release.set()
+            _drain_guard_metrics()
+
+    # THEN the moderated answer is returned while the upload is still running
+    text = "".join(ev.delta for ev in ctx.output.events if isinstance(ev, TextMessageContentEvent))
+    assert text == "model-out"
+
+
+def _dome_pipeline_without_association_id() -> tuple[LLMPipeline, MagicMock]:
+    """DOME's real ``LLMPipeline`` reporting logic as DRAgent runs it: no association-id column.
+
+    Only DRUM's per-request ``get_new_metrics_payload`` looks the column up, and the DRAgent path
+    never calls it. OTel publishing and the custom-metric upload are mocked.
+    """
+    pipeline = LLMPipeline.__new__(LLMPipeline)
+    pipeline._logger = MagicMock()
+    pipeline._association_id_column_name = None
+    pipeline._pre_score_guards = []
+    pipeline._post_score_guards = []
+    pipeline.get_input_column = lambda stage: (  # type: ignore[method-assign]
+        PROMPT_COL if stage == GuardStage.PROMPT else RESPONSE_COL
+    )
+    pipeline.custom_metric_session = CustomMetricSession(
+        "deployment", "https://metrics.test/upload"
+    )
+    pipeline.upload_custom_metrics = MagicMock()  # type: ignore[method-assign]
+    otel = MagicMock()
+    otel.metrics = {"Blocked Prompts": MagicMock()}
+    pipeline.otel_metrics_session = otel
+    return pipeline, otel
+
+
+async def test_blocked_prompt_counter_is_published_through_otel(builder_mock: MagicMock) -> None:
+    # GIVEN DOME's reporting logic with no association-id column, as in DRAgent
+    pipeline, otel = _dome_pipeline_without_association_id()
+    moderation = _moderation_mock(MagicMock())
+    moderation._pipeline = pipeline
+    prescore = _prescore_df_blocked("hello", "blocked")
+    _set_evaluate_prompt_async_return(moderation, prescore)
+
+    # WHEN a prompt is blocked
+    with patch(f"{_MODULE}.load_llm_moderation_pipeline", return_value=moderation):
+        mw = DataRobotModerationMiddleware(DataRobotModerationConfig(), builder_mock)
+        try:
+            await mw.pre_invoke(_invocation(_make_run_input("hello")))
+        finally:
+            _clear_moderation_invoke_state_if_set()
+    _drain_guard_metrics()
+
+    # THEN the blocked counter is published as an OTel metric and published once
+    otel.set_value.assert_any_call("Blocked Prompts", prescore[f"blocked_{PROMPT_COL}"].iloc[0])
+    otel.publish_values.assert_called_once()
+    # AND the DataRobot custom-metric upload is skipped: DOME needs the association-id column
+    pipeline.upload_custom_metrics.assert_not_called()
 
 
 async def test_post_invoke_rejects_nat_chat_response_output(builder_mock: MagicMock) -> None:
@@ -4099,11 +4401,21 @@ def test_load_llm_moderation_pipeline_passes_allow_external_access_tokens(
 
 
 @_request_token_cases
+@pytest.mark.parametrize("blocked", [False, True])
 async def test_pre_invoke_forwards_request_token(
-    builder_mock: MagicMock, enabled: bool, headers: dict[str, str], expected: str | None
+    builder_mock: MagicMock,
+    enabled: bool,
+    headers: dict[str, str],
+    expected: str | None,
+    blocked: bool,
 ) -> None:
     moderation = _moderation_mock(_pipeline_mock())
-    _set_evaluate_prompt_async_return(moderation, _prescore_df_ok("hello"))
+    prescore = _prescore_df_blocked("hello", "blocked") if blocked else _prescore_df_ok("hello")
+    _set_evaluate_prompt_async_return(moderation, prescore)
+    reported_tokens: list[str | None] = []
+    moderation._pipeline.report_custom_metrics.side_effect = lambda row: reported_tokens.append(
+        resolve_datarobot_token(None)
+    )
     cfg = DataRobotModerationConfig(allow_external_access_tokens=enabled)
 
     with (
@@ -4117,6 +4429,9 @@ async def test_pre_invoke_forwards_request_token(
             _clear_moderation_invoke_state_if_set()
 
     moderation.evaluate_prompt_async.assert_awaited_once_with("hello", api_token=expected)
+    _drain_guard_metrics()
+    assert reported_tokens == ([expected] if blocked else [])
+    assert resolve_datarobot_token(None) is None
 
 
 @_request_token_cases
@@ -4124,6 +4439,10 @@ async def test_post_invoke_forwards_request_token(
     builder_mock: MagicMock, enabled: bool, headers: dict[str, str], expected: str | None
 ) -> None:
     moderation = _moderation_mock(_pipeline_mock())
+    reported_tokens: list[str | None] = []
+    moderation._pipeline.report_custom_metrics.side_effect = lambda row: reported_tokens.append(
+        resolve_datarobot_token(None)
+    )
     moderation.evaluate_response_async.return_value = (
         EvaluationResult(blocked=False),
         0.0,
@@ -4146,6 +4465,9 @@ async def test_post_invoke_forwards_request_token(
             _clear_moderation_invoke_state_if_set()
 
     assert moderation.evaluate_response_async.await_args.kwargs["api_token"] == expected
+    _drain_guard_metrics()
+    assert reported_tokens == [expected]
+    assert resolve_datarobot_token(None) is None
 
 
 @_request_token_cases

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.31.6 - 2026-11-12
+- `dragent`: Fixed the moderation middleware not reporting guard counters, scores and violation
+  count for non-streaming requests and blocked prompts; only totals and latencies were reported.
+  Reporting runs in the background, one row at a time, instead of delaying the response.
+- `crewai`: Fixed overlapping requests failing with HTTP 422 "Executor is already running"; runs
+  are now queued per event loop. The queue is freed as soon as a crew finishes, not when a slow
+  client has read the stream, and a closed request (e.g. a dropped stream) stops its crew at once.
+  A run started inside an active run does not wait for its parent.
+- `crewai`: Fixed agent spans reporting the agent's running token total instead of the run's own
+  tokens, which inflated token usage.
+
 ## 0.31.5 - 2026-11-10
 - `drmcp`: Fixed tools that call DataRobot through the Python SDK sending JWTs, such as the
   caller's external identity provider token (from `x-datarobot-external-access-token`) or a

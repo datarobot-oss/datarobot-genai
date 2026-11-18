@@ -58,6 +58,8 @@ import contextvars
 import logging
 import math
 import os
+import queue
+import threading
 import uuid
 from collections.abc import AsyncGenerator
 from collections.abc import AsyncIterator
@@ -97,6 +99,7 @@ from datarobot_dome.constants import DATAROBOT_MODERATIONS_ATTR
 from datarobot_dome.constants import MODERATION_CONFIG_FILE_NAME
 from datarobot_dome.constants import MODERATION_MODEL_NAME
 from datarobot_dome.constants import GuardStage
+from datarobot_dome.request_credentials import use_request_token
 from datarobot_dome.schema.moderation_config import ModerationConfig
 from datarobot_moderation_interface.drum_integration import get_chat_prompt
 from nat.builder.builder import Builder
@@ -1348,6 +1351,100 @@ def _clear_moderation_invoke_state_if_set() -> None:
     _moderation_invoke_state_ctx.reset(state.ctx_token)
 
 
+# Rows waiting to be reported before new ones are dropped: a stalled metrics backend must not grow
+# memory without bound. One row per request, so this covers a long burst.
+_MAX_PENDING_GUARD_METRIC_ROWS = 1000
+
+
+class _GuardMetricsReporter:
+    """Report guard-metric rows one at a time, off the request path.
+
+    ``report_custom_metrics`` publishes DOME's OTel metrics and, when DOME knows the deployment's
+    association-id column, uploads DataRobot custom metrics. That upload runs on the one event loop
+    its ``CustomMetricSession`` was created with, so two uploads at once fail; one worker avoids
+    that for this middleware's reports. DOME's streaming path reports from its own threads and is
+    not covered. The worker is a daemon: rows still queued at shutdown are dropped, not waited for.
+    """
+
+    def __init__(self, max_pending: int) -> None:
+        self._rows: queue.Queue[tuple[Any, pd.DataFrame, str | None]] = queue.Queue(max_pending)
+        self._worker: threading.Thread | None = None
+        self._start_lock = threading.Lock()
+        if hasattr(os, "register_at_fork"):
+            os.register_at_fork(after_in_child=self._reset_after_fork)
+
+    def _reset_after_fork(self) -> None:
+        # Parent rows and locks belong to threads that no longer exist in this process.
+        self._rows = queue.Queue(self._rows.maxsize)
+        self._worker = None
+        self._start_lock = threading.Lock()
+
+    def submit(self, pipeline: Any, row: pd.DataFrame, api_token: str | None) -> bool:
+        """Queue a row; ``False`` when it was dropped because too many rows are pending."""
+        self._ensure_worker()
+        try:
+            self._rows.put_nowait((pipeline, row, api_token))
+        except queue.Full:
+            _logger.warning(
+                "Dropping guard metrics: %d rows are already waiting to be reported",
+                self._rows.maxsize,
+            )
+            return False
+        return True
+
+    def join(self) -> None:
+        """Wait until every queued row has been reported."""
+        self._rows.join()
+
+    def _ensure_worker(self) -> None:
+        # Start lazily, restarting if a previous worker exited.
+        with self._start_lock:
+            if self._worker is None or not self._worker.is_alive():
+                self._worker = threading.Thread(
+                    target=self._run, name="dragent-guard-metrics", daemon=True
+                )
+                self._worker.start()
+
+    def _run(self) -> None:
+        while True:
+            pipeline, row, api_token = self._rows.get()
+            try:
+                with use_request_token(api_token):
+                    pipeline.report_custom_metrics(row)
+            except Exception:
+                _logger.exception("Reporting guard metrics failed")
+            finally:
+                self._rows.task_done()
+
+
+_GUARD_METRICS_REPORTER = _GuardMetricsReporter(_MAX_PENDING_GUARD_METRIC_ROWS)
+
+
+def _report_guard_metrics(
+    pipeline: Any,
+    prescore_df: pd.DataFrame,
+    postscore_df: pd.DataFrame | None = None,
+    *,
+    api_token: str | None = None,
+) -> bool:
+    """Queue one prompt (+ response) row of guard metrics (counters, scores, violations).
+
+    ``evaluate_prompt_async`` / ``evaluate_response_async`` do not report them; the caller does,
+    as the streaming path and the DRUM integration do. The row is built now and reported by
+    ``_GUARD_METRICS_REPORTER``. A reporting failure is logged only: it must not fail an already
+    moderated request. Returns whether the row was queued.
+    """
+    try:
+        row = prescore_df.copy()
+        if postscore_df is not None:
+            for column in postscore_df.columns:
+                row[column] = postscore_df[column].values
+        return _GUARD_METRICS_REPORTER.submit(pipeline, row, api_token)
+    except Exception:
+        _logger.exception("Reporting guard metrics failed")
+        return False
+
+
 class DataRobotModerationMiddleware(
     FunctionMiddleware,  # type: ignore[misc]
 ):
@@ -1468,6 +1565,7 @@ class DataRobotModerationMiddleware(
                 # If all prompts in the input are blocked, means history as well as the prompt
                 # are not worthy to be sent to LLM. No invoke state: post_invoke / streaming never
                 # run.
+                _report_guard_metrics(pipeline, prescore_df, api_token=self._request_api_token())
                 context.output = _dragent_event_response_from_blocked_prompt_eval(prompt_eval)
                 return context
 
@@ -1512,16 +1610,19 @@ class DataRobotModerationMiddleware(
         # agent's native output into ``DRAgentEventResponse`` before this hook runs, so moderation
         # only ever handles that canonical type.
         original_output = _require_dragent_event_response(original_output)
-        if not _response_has_assistant_text_deltas(original_output):
-            return None
-        response_text = convert_dragent_event_response_to_str(original_output)
-
-        if not response_text.strip():
+        state = _moderation_invoke_state_ctx.get()
+        if state is None:
             return None
 
         pipeline = moderation._pipeline
-        state = _moderation_invoke_state_ctx.get()
-        if state is None:
+        response_text = (
+            convert_dragent_event_response_to_str(original_output)
+            if _response_has_assistant_text_deltas(original_output)
+            else ""
+        )
+        if not response_text.strip():
+            # Nothing to postscore, but the prompt stage already ran: report its metrics.
+            _report_guard_metrics(pipeline, state.prescore_df, api_token=self._request_api_token())
             return None
 
         try:
@@ -1532,11 +1633,14 @@ class DataRobotModerationMiddleware(
             # Wrap in the NAT workflow trace context so dome's ``evaluate_response`` span joins the
             # request trace (see the pre_invoke prescore call for the full rationale).
             with use_nat_workflow_trace_context():
-                response_eval, _, _postscore_df = await moderation.evaluate_response_async(
+                response_eval, _, postscore_df = await moderation.evaluate_response_async(
                     response_text,
                     prompt=state.prompt,
                     api_token=self._request_api_token(),
                 )
+            _report_guard_metrics(
+                pipeline, state.prescore_df, postscore_df, api_token=self._request_api_token()
+            )
 
             prompt_eval = _from_dataframe(state.prescore_df, prompt_column_name)
 
