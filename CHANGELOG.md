@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.32.0 - 2026-11-18
+- `dragent`: The A2A server and client no longer depend on `nvidia-nat-a2a`. dragent now ships
+  its own copy of the parts it uses, which prepares the move to A2A v1.0. A2A behaviour is
+  unchanged, and workflows that use `_type: a2a_client` or `_type: authenticated_a2a_client`
+  keep working.
+
 ## 0.31.7 - 2026-11-18
 - Added `datarobot_genai.core.auth.workload_identity`, which obtains and refreshes a DataRobot workload
   identity token. Configuration comes from env, with one of two auth modes:

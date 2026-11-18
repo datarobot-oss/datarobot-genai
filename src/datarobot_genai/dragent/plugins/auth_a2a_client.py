@@ -37,14 +37,14 @@ from nat.cli.register_workflow import register_per_user_function_group
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
-from nat.plugins.a2a.auth.credential_service import A2ACredentialService
-from nat.plugins.a2a.client.client_base import A2ABaseClient
-from nat.plugins.a2a.client.client_config import A2AClientConfig
-from nat.plugins.a2a.client.client_impl import A2AClientFunctionGroup
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import model_validator
 
+from datarobot_genai.dragent.a2a.auth.credential_service import A2ACredentialService
+from datarobot_genai.dragent.a2a.client.client_base import A2ABaseClient
+from datarobot_genai.dragent.a2a.client.client_config import A2AClientConfig
+from datarobot_genai.dragent.a2a.client.client_impl import A2AClientFunctionGroup
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync

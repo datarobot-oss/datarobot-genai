@@ -1079,7 +1079,7 @@ core = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.31.2"
+version = "0.32.0"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1111,6 +1111,7 @@ crewai = [
     { name = "requests" },
 ]
 dragent = [
+    { name = "a2a-sdk", extra = ["http-server"] },
     { name = "ag-ui-protocol" },
     { name = "cachetools" },
     { name = "colorama" },
@@ -1122,7 +1123,6 @@ dragent = [
     { name = "llama-index-llms-bedrock-converse", extra = ["async"] },
     { name = "mem0ai" },
     { name = "nvidia-nat" },
-    { name = "nvidia-nat-a2a" },
     { name = "nvidia-nat-langchain", extra = ["litellm"] },
     { name = "nvidia-nat-mcp" },
     { name = "nvidia-nat-opentelemetry" },
@@ -1191,6 +1191,7 @@ llamaindex = [
 
 [package.metadata]
 requires-dist = [
+    { name = "a2a-sdk", extras = ["http-server"], marker = "extra == 'dragent'", specifier = ">=0.3.20,<1.0.0" },
     { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = "==0.1.15" },
@@ -1280,7 +1281,6 @@ requires-dist = [
     { name = "mem0ai", marker = "extra == 'dragent'", specifier = ">=1.0.8,<2.0.0" },
     { name = "nemo-evaluator-launcher", marker = "extra == 'eval'" },
     { name = "nvidia-nat", marker = "extra == 'dragent'", specifier = "==1.9.0" },
-    { name = "nvidia-nat-a2a", marker = "extra == 'dragent'", specifier = "==1.9.0" },
     { name = "nvidia-nat-crewai", marker = "extra == 'crewai'", specifier = "==1.9.0" },
     { name = "nvidia-nat-langchain", extras = ["litellm"], marker = "extra == 'dragent'", specifier = "==1.9.0" },
     { name = "nvidia-nat-langchain", extras = ["litellm"], marker = "extra == 'langgraph'", specifier = "==1.9.0" },
@@ -4312,18 +4312,6 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4f/bb/0fa606fde54421acd56f68e40278c4125f8183f1d49540a72a9cc62bfd07/nvidia_nat-1.9.0-py3-none-any.whl", hash = "sha256:81a61991ce3c50da67de671633641ef4b4719ad1ac30ad90449c18b11a877ee5", size = 49617, upload-time = "2026-09-10T22:42:34.077Z" },
-]
-
-[[package]]
-name = "nvidia-nat-a2a"
-version = "1.9.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "a2a-sdk", extra = ["http-server"] },
-    { name = "nvidia-nat-core" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/6e/968d8784ba41e8bc5cfac24ac71e69730cc1e663da84d2fcbe7958d20113/nvidia_nat_a2a-1.9.0-py3-none-any.whl", hash = "sha256:808f0c9acf6737c3419ea7019486f294ee0c67989ef180550baea9a73ef13d1d", size = 44204, upload-time = "2026-09-10T22:42:39.404Z" },
 ]
 
 [[package]]

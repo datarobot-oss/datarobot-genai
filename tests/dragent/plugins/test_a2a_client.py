@@ -36,8 +36,8 @@ from nat.authentication.interfaces import AuthProviderBase
 from nat.data_models.authentication import AuthResult
 from nat.data_models.authentication import BearerTokenCred
 from nat.data_models.authentication import HeaderCred
-from nat.plugins.a2a.client.client_config import A2AClientConfig
 
+from datarobot_genai.dragent.a2a.client.client_config import A2AClientConfig
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import get_default_registry_sync
 from datarobot_genai.dragent.agent_card_registry import reset_default_registry

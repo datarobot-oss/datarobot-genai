@@ -42,13 +42,13 @@ from a2a.types import OAuthFlows
 from a2a.types import SecurityScheme
 from a2a.utils.errors import ServerError
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
-from nat.plugins.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
-from nat.plugins.a2a.server.front_end_config import A2AFrontEndConfig
-from nat.plugins.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from starlette.responses import JSONResponse
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
+from datarobot_genai.dragent.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
+from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
+from datarobot_genai.dragent.a2a.server.front_end_plugin_worker import A2AFrontEndPluginWorker
 from datarobot_genai.dragent.constants import A2A_MOUNT_PATH
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.deployment_urls import build_deployment_a2a_url
