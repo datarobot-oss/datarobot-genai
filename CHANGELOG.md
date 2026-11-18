@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.32.1 - 2026-11-18
+## 0.33.0 - 2026-11-18
 - `dragent`: move `mem0ai` to the 2.x line. The declared requirement goes from
   `mem0ai>=1.0.8,<2.0.0` to `mem0ai>=2.0.18,<3.0.0` to meet the CVE floor for CVE-2026-115324,
   CVE-2026-116575 and CVE-2026-7597, which no 1.x release fixes. Projects that pin `mem0ai` below
