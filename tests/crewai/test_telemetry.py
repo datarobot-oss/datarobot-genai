@@ -18,6 +18,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from crewai.agents.agent_builder.utilities.base_token_process import TokenProcess
+from crewai.types.usage_metrics import UsageMetrics
 from opentelemetry import baggage
 from opentelemetry import trace
 
@@ -144,3 +146,57 @@ class TestWrapAexecuteTaskPropagatesAgentNameAsBaggage:
         await wrapper(wrapped, instance, (), {})
 
         assert seen_agent_name is None
+
+
+class TestWrapAexecuteTaskRecordsOnlyThisRunsTokens:
+    """An agent's token counters accumulate over every run of the shared crew, so the span must
+    carry the difference since its own run started, not the running total.
+    """
+
+    @staticmethod
+    def _usage(prompt_tokens: int, completion_tokens: int) -> UsageMetrics:
+        return TokenProcess(
+            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+        ).get_summary()
+
+    async def _recorded_tokens(
+        self, before: UsageMetrics, after: UsageMetrics
+    ) -> dict[str, object]:
+        instance = MagicMock()
+        instance._token_process.get_summary.side_effect = [before, after]
+        histogram = MagicMock()
+        recorded: dict[str, object] = {}
+
+        async def wrapped(*args: object, **kwargs: object) -> str:
+            return "ok"
+
+        with patch.object(
+            telemetry,
+            "set_span_attribute",
+            side_effect=lambda span, key, value: recorded.__setitem__(key, value),
+        ):
+            wrapper = telemetry.wrap_aexecute_task(trace.get_tracer(__name__), None, histogram)
+            await wrapper(wrapped, instance, (), {})
+        assert [call.args[0] for call in histogram.record.call_args_list] == [
+            after.prompt_tokens - before.prompt_tokens,
+            after.completion_tokens - before.completion_tokens,
+        ]
+        return recorded
+
+    @pytest.mark.parametrize("this_run", [(30, 15), (0, 0)])
+    async def test_span_carries_only_the_tokens_of_this_run(
+        self, this_run: tuple[int, int]
+    ) -> None:
+        # GIVEN an agent that already used tokens in earlier runs
+        earlier = (100, 40)
+        before = self._usage(*earlier)
+        after = self._usage(*(done + new for done, new in zip(earlier, this_run, strict=True)))
+
+        # WHEN it runs once more
+        recorded = await self._recorded_tokens(before, after)
+
+        # THEN the span carries only this run's tokens, and no usage attribute when there are none
+        keys = ("gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens")
+        assert {key: recorded[key] for key in keys if key in recorded} == {
+            key: used for key, used in zip(keys, this_run, strict=True) if used
+        }

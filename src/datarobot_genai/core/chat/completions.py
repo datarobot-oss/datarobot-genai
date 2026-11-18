@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from collections.abc import Iterable
@@ -263,8 +264,9 @@ async def agent_chat_completion_wrapper(
         async def _stream_with_mcp() -> InvokeReturn:
             async with mcp_tools_factory() as mcp_tools:
                 agent.set_tools(_merge_mcp_tools_with_agent_tools(mcp_tools, agent))
-                async for item in agent.invoke(run_agent_input):
-                    yield item
+                async with contextlib.aclosing(agent.invoke(run_agent_input)) as events:
+                    async for item in events:
+                        yield item
 
         return _stream_with_mcp()
     else:
@@ -277,14 +279,15 @@ async def agent_chat_completion_wrapper(
             pipeline_interactions = None
             usage_metrics = default_usage_metrics()
             received_run_finished = False
-            async for event, iter_interactions, iter_metrics in agent.invoke(run_agent_input):
-                response_text.add(event)
-                if isinstance(event, RunFinishedEvent):
-                    received_run_finished = True
-                    pipeline_interactions = iter_interactions
-                    usage_metrics = iter_metrics
-                elif isinstance(event, RunErrorEvent):
-                    raise RuntimeError(event.message)
+            async with contextlib.aclosing(agent.invoke(run_agent_input)) as events:
+                async for event, iter_interactions, iter_metrics in events:
+                    response_text.add(event)
+                    if isinstance(event, RunFinishedEvent):
+                        received_run_finished = True
+                        pipeline_interactions = iter_interactions
+                        usage_metrics = iter_metrics
+                    elif isinstance(event, RunErrorEvent):
+                        raise RuntimeError(event.message)
 
             if not received_run_finished:
                 logger.warning("Agent stream ended without RunFinishedEvent")

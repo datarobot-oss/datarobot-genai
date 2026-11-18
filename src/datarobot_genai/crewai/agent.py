@@ -24,8 +24,14 @@ default. Subclasses may implement message capture if they need interactions.
 from __future__ import annotations
 
 import abc
+import asyncio
+import contextlib
+import contextvars
+import functools
 import logging
 import uuid
+import weakref
+from collections.abc import AsyncGenerator
 from collections.abc import Callable
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
@@ -80,6 +86,75 @@ def _dedupe_tools_by_name(tools: list[BaseTool]) -> list[BaseTool]:
         seen.add(tool.name)
         unique.append(tool)
     return unique
+
+
+# CrewAI's event bus is process-global and the crew's agents (with their cached executors) are
+# shared across requests, so two overlapping runs corrupt each other: the second fails with
+# "Executor is already running" (HTTP 422). Runs are queued per event loop: a process-wide lock
+# would deadlock a sync tool that starts another crew on its own loop. Sharing crews across loops
+# still requires coordination by the caller.
+# Keep locks alive only while invocations own them: a contended lock retains its loop.
+_INVOKE_LOCKS: weakref.WeakValueDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = (
+    weakref.WeakValueDictionary()
+)
+# Set inside a run: a CrewAI run started from within another on the same loop (e.g. an async tool
+# calling another CrewAI agent) would otherwise wait forever for the lock its own parent holds.
+_CREWAI_RUN_TASK: contextvars.ContextVar[asyncio.Task[Any] | None] = contextvars.ContextVar(
+    "datarobot_genai_crewai_run_task", default=None
+)
+_RUN_DONE = object()
+
+
+async def _run_locked(events: AsyncGenerator[Any, None], out: asyncio.Queue[Any]) -> None:
+    """Drive one run under the invoke lock, buffering its events for the caller."""
+    try:
+        async with _INVOKE_LOCKS.setdefault(asyncio.get_running_loop(), asyncio.Lock()):
+            _CREWAI_RUN_TASK.set(asyncio.current_task())
+            async with contextlib.aclosing(events) as run:
+                async for event in run:
+                    out.put_nowait(event)
+    finally:
+        out.put_nowait(_RUN_DONE)
+
+
+def _serialize_invocations(
+    invoke: Callable[..., AsyncGenerator[Any, None]],
+) -> Callable[..., AsyncGenerator[Any, None]]:
+    """Run ``invoke`` under its event loop's invoke lock.
+
+    The run is driven by its own task and its events are buffered, so the lock is released as soon
+    as the crew finishes, not when a slow client has read the whole stream. Closing or cancelling
+    the returned generator cancels the run, which stops the crew and releases the lock at once.
+    """
+
+    @functools.wraps(invoke)
+    async def wrapper(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        parent = _CREWAI_RUN_TASK.get()
+        if (
+            parent is not None
+            and not parent.done()
+            and parent.get_loop() is asyncio.get_running_loop()
+        ):
+            async with contextlib.aclosing(invoke(*args, **kwargs)) as nested:
+                async for event in nested:
+                    yield event
+            return
+
+        buffered: asyncio.Queue[Any] = asyncio.Queue()
+        run = asyncio.create_task(_run_locked(invoke(*args, **kwargs), buffered))
+        try:
+            while (event := await buffered.get()) is not _RUN_DONE:
+                yield event
+        finally:
+            run.cancel()
+            await asyncio.wait([run])
+            error = None if run.cancelled() else run.exception()
+        if run.cancelled():
+            raise asyncio.CancelledError
+        if error is not None:
+            raise error
+
+    return wrapper
 
 
 class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
@@ -399,6 +474,7 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
         return default_usage_metrics()
 
     @frame_agent_errors
+    @_serialize_invocations
     async def invoke(self, run_agent_input: RunAgentInput) -> InvokeReturn:
         """Run the CrewAI workflow with the provided completion parameters."""
         user_prompt_content = extract_user_prompt_content(run_agent_input)
@@ -502,6 +578,9 @@ class CrewAIAgent(BaseAgent[BaseTool], abc.ABC):
                     for item in out(emitter.finish(), usage_metrics):
                         yield item
                     raise
+                finally:
+                    # Stop CrewAI's background task before releasing the invocation lock.
+                    await crew_output.aclose()
             else:
                 message_id = str(uuid.uuid4())
                 response_text = str(crew_output.raw)

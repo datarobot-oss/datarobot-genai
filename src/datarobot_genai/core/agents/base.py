@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import abc
+import contextlib
 import functools
 import json
 import logging
@@ -180,8 +181,9 @@ class BaseAgent(Generic[TTool], abc.ABC):
             context=[],
             forwardedProps=None,
         )
-        async for output in self.invoke(run_input):
-            yield output
+        async with contextlib.aclosing(self.invoke(run_input)) as events:
+            async for output in events:
+                yield output
 
     def build_history_summary(
         self,
@@ -355,8 +357,9 @@ def frame_agent_errors(invoke: Callable[..., InvokeReturn]) -> Callable[..., Inv
     @functools.wraps(invoke)
     async def wrapper(self: Any, run_agent_input: RunAgentInput) -> InvokeReturn:
         open_text_ids: set[str] = set()
+        events = invoke(self, run_agent_input)
         try:
-            async for event, interactions, usage in invoke(self, run_agent_input):
+            async for event, interactions, usage in events:
                 track_open_text(open_text_ids, event)
                 yield event, interactions, usage
         except Exception as exc:
@@ -368,5 +371,7 @@ def frame_agent_errors(invoke: Callable[..., InvokeReturn]) -> Callable[..., Inv
                 None,
                 default_usage_metrics(),
             )
+        finally:
+            await events.aclose()
 
     return wrapper
