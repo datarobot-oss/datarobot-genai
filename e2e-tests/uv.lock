@@ -78,6 +78,7 @@ overrides = [
     { name = "python-dotenv", specifier = ">=1.2.2,<2.0.0" },
 ]
 excludes = [
+    "aioboto3",
     "annoy",
     "build",
     "flask",
@@ -142,42 +143,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/57/71/96c21ae7e2fb9b610c1a90d38bd2de8b6e5b2900a63001f3882f43e519af/ag_ui_protocol-0.1.15.tar.gz", hash = "sha256:5e23c1042c7d4e364d685e68d2fb74d37c16bc83c66d270102d8eaedce56ad82", size = 6269, upload-time = "2026-04-01T15:44:33.136Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e4/a0/a73398d30bb0f9ad70cd70426151a4a19527a7296e48a3a16a50e1d5db05/ag_ui_protocol-0.1.15-py3-none-any.whl", hash = "sha256:85cde077023ccbc37b5ce2ad953537883c262d210320f201fc2ec4e85408b06a", size = 8661, upload-time = "2026-04-01T15:44:32.079Z" },
-]
-
-[[package]]
-name = "aioboto3"
-version = "15.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiobotocore", extra = ["boto3"] },
-    { name = "aiofiles" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/01/92e9ab00f36e2899315f49eefcd5b4685fbb19016c7f19a9edf06da80bb0/aioboto3-15.5.0.tar.gz", hash = "sha256:ea8d8787d315594842fbfcf2c4dce3bac2ad61be275bc8584b2ce9a3402a6979", size = 255069, upload-time = "2025-10-30T13:37:16.122Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/3e/e8f5b665bca646d43b916763c901e00a07e40f7746c9128bdc912a089424/aioboto3-15.5.0-py3-none-any.whl", hash = "sha256:cc880c4d6a8481dd7e05da89f41c384dbd841454fc1998ae25ca9c39201437a6", size = 35913, upload-time = "2025-10-30T13:37:14.549Z" },
-]
-
-[[package]]
-name = "aiobotocore"
-version = "2.25.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "aioitertools" },
-    { name = "botocore" },
-    { name = "jmespath" },
-    { name = "multidict" },
-    { name = "python-dateutil" },
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/62/94/2e4ec48cf1abb89971cb2612d86f979a6240520f0a659b53a43116d344dc/aiobotocore-2.25.1.tar.gz", hash = "sha256:ea9be739bfd7ece8864f072ec99bb9ed5c7e78ebb2b0b15f29781fbe02daedbc", size = 120560, upload-time = "2025-10-28T22:33:21.787Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/2a/d275ec4ce5cd0096665043995a7d76f5d0524853c76a3d04656de49f8808/aiobotocore-2.25.1-py3-none-any.whl", hash = "sha256:eb6daebe3cbef5b39a0bb2a97cffbe9c7cb46b2fcc399ad141f369f3c2134b1f", size = 86039, upload-time = "2025-10-28T22:33:19.949Z" },
-]
-
-[package.optional-dependencies]
-boto3 = [
-    { name = "boto3" },
 ]
 
 [[package]]
@@ -286,15 +251,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9d/61/ebda4d8e3d8cfa1fd3db0fb428db2dd7461d5742cea35178277ad180b033/aiohttp_retry-2.9.1.tar.gz", hash = "sha256:8eb75e904ed4ee5c2ec242fefe85bf04240f685391c4879d8f541d6028ff01f1", size = 13608, upload-time = "2024-11-06T10:44:54.574Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1a/99/84ba7273339d0f3dfa57901b846489d2e5c2cd731470167757f1935fffbd/aiohttp_retry-2.9.1-py3-none-any.whl", hash = "sha256:66d2759d1921838256a05a3f80ad7e724936f083e35be5abb5e16eed6be6dc54", size = 9981, upload-time = "2024-11-06T10:44:52.917Z" },
-]
-
-[[package]]
-name = "aioitertools"
-version = "0.13.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fd/3c/53c4a17a05fb9ea2313ee1777ff53f5e001aefd5cc85aa2f4c2d982e1e38/aioitertools-0.13.0.tar.gz", hash = "sha256:620bd241acc0bbb9ec819f1ab215866871b4bbd1f73836a55f799200ee86950c", size = 19322, upload-time = "2025-11-06T22:17:07.609Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/a1/510b0a7fadc6f43a6ce50152e69dbd86415240835868bb0bd9b5b88b1e06/aioitertools-0.13.0-py3-none-any.whl", hash = "sha256:0be0292b856f08dfac90e31f4739432f4cb6d7520ab9eb73e143f4f2fa5259be", size = 24182, upload-time = "2025-11-06T22:17:06.502Z" },
 ]
 
 [[package]]
@@ -1111,7 +1067,7 @@ core = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.34.0"
+version = "0.34.1"
 source = { editable = "../" }
 
 [package.optional-dependencies]
@@ -1127,7 +1083,7 @@ crewai = [
     { name = "datarobot-predict" },
     { name = "httpx-retries" },
     { name = "litellm" },
-    { name = "llama-index-llms-bedrock-converse", extra = ["async"] },
+    { name = "llama-index-llms-bedrock-converse" },
     { name = "mcpadapt", version = "0.1.19", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "mcpadapt", version = "0.1.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "nvidia-nat-crewai" },
@@ -1152,7 +1108,7 @@ dragent = [
     { name = "datarobot-opentelemetry" },
     { name = "datarobot-predict" },
     { name = "httpx-retries" },
-    { name = "llama-index-llms-bedrock-converse", extra = ["async"] },
+    { name = "llama-index-llms-bedrock-converse" },
     { name = "mem0ai" },
     { name = "nvidia-nat" },
     { name = "nvidia-nat-langchain", extra = ["litellm"] },
@@ -1181,7 +1137,7 @@ langgraph = [
     { name = "langchain-mcp-adapters" },
     { name = "langgraph" },
     { name = "litellm" },
-    { name = "llama-index-llms-bedrock-converse", extra = ["async"] },
+    { name = "llama-index-llms-bedrock-converse" },
     { name = "nvidia-nat-langchain", extra = ["litellm"] },
     { name = "openai" },
     { name = "opentelemetry-instrumentation-aiohttp-client" },
@@ -1204,7 +1160,7 @@ llamaindex = [
     { name = "httpx-retries" },
     { name = "litellm" },
     { name = "llama-index-core" },
-    { name = "llama-index-llms-bedrock-converse", extra = ["async"] },
+    { name = "llama-index-llms-bedrock-converse" },
     { name = "llama-index-llms-langchain" },
     { name = "llama-index-llms-litellm" },
     { name = "llama-index-tools-mcp" },
@@ -1301,11 +1257,11 @@ requires-dist = [
     { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.96.2,<2.0.0" },
     { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.96.2,<2.0.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
-    { name = "llama-index-llms-bedrock-converse", extras = ["async"], marker = "extra == 'core'", specifier = ">=0.15.0" },
-    { name = "llama-index-llms-bedrock-converse", extras = ["async"], marker = "extra == 'crewai'", specifier = ">=0.15.0" },
-    { name = "llama-index-llms-bedrock-converse", extras = ["async"], marker = "extra == 'dragent'", specifier = ">=0.15.0" },
-    { name = "llama-index-llms-bedrock-converse", extras = ["async"], marker = "extra == 'langgraph'", specifier = ">=0.15.0" },
-    { name = "llama-index-llms-bedrock-converse", extras = ["async"], marker = "extra == 'llamaindex'", specifier = ">=0.15.0" },
+    { name = "llama-index-llms-bedrock-converse", marker = "extra == 'core'", specifier = ">=0.15.3" },
+    { name = "llama-index-llms-bedrock-converse", marker = "extra == 'crewai'", specifier = ">=0.15.3" },
+    { name = "llama-index-llms-bedrock-converse", marker = "extra == 'dragent'", specifier = ">=0.15.3" },
+    { name = "llama-index-llms-bedrock-converse", marker = "extra == 'langgraph'", specifier = ">=0.15.3" },
+    { name = "llama-index-llms-bedrock-converse", marker = "extra == 'llamaindex'", specifier = ">=0.15.3" },
     { name = "llama-index-llms-langchain", marker = "extra == 'llamaindex'", specifier = ">=0.8.0,<1.0.0" },
     { name = "llama-index-llms-litellm", marker = "extra == 'llamaindex'", specifier = ">=0.4.1,<0.7.0" },
     { name = "llama-index-tools-mcp", marker = "extra == 'llamaindex'", specifier = ">=0.1.0,<0.5.0" },
@@ -3606,11 +3562,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/54/7f/65e4ff542489c9e275a3d15d7eaa277a8f8ec12103cad3fa03c9a9acf629/llama_index_llms_bedrock_converse-0.15.3.tar.gz", hash = "sha256:f45396eb3c9732c308d923879ba7ecafedda72c1897ce02b7bba5458641d9336", size = 20424, upload-time = "2026-09-29T04:49:35.921Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/44/af/94d375ae0eb11523782a7cd8d8ccae6ca6a0778601dded2b8857ec00442f/llama_index_llms_bedrock_converse-0.15.3-py3-none-any.whl", hash = "sha256:97b4f84629ed7296f5179c1022e22c0095f9a10d86955988db477a5ac6d8abf0", size = 20882, upload-time = "2026-09-29T04:49:34.945Z" },
-]
-
-[package.optional-dependencies]
-async = [
-    { name = "aioboto3" },
 ]
 
 [[package]]
