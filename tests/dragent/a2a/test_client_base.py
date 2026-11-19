@@ -182,6 +182,48 @@ class TestExtractTextFromEvents:
         assert text == "The answer"
 
 
+class TestExtractTextFromTask:
+    def test_task_without_status_still_reads_artifacts(self, client: A2ABaseClient) -> None:
+        # GIVEN a task that carries no status at all, only an artifact
+        task = Task(id=_TASK_ID, artifacts=[_artifact("a1", "Hello")])
+
+        # WHEN extracting text
+        text = client.extract_text_from_task(task)
+
+        # THEN it is not mistaken for an unfinished task, and the artifact is read
+        assert text == "Hello"
+
+    def test_failed_task_reports_its_message(self, client: A2ABaseClient) -> None:
+        # GIVEN a failed task whose status explains why
+        task = _task_event(TaskState.TASK_STATE_FAILED, status_text="Tool exploded").task
+
+        # WHEN extracting text
+        text = client.extract_text_from_task(task)
+
+        # THEN the explanation is returned as plain text
+        assert text == "Task failed: Tool exploded"
+
+    def test_failed_task_without_message_says_unknown_error(self, client: A2ABaseClient) -> None:
+        # GIVEN a failed task with no status message
+        task = _task_event(TaskState.TASK_STATE_FAILED).task
+
+        # WHEN extracting text
+        text = client.extract_text_from_task(task)
+
+        # THEN the fallback text is used
+        assert text == "Task failed: Unknown error"
+
+    def test_unfinished_task_names_its_state(self, client: A2ABaseClient) -> None:
+        # GIVEN a task that is still working
+        task = _task_event(TaskState.TASK_STATE_WORKING).task
+
+        # WHEN extracting text
+        text = client.extract_text_from_task(task)
+
+        # THEN the state is shown by name, not as a number
+        assert text == "Task in progress (state: TASK_STATE_WORKING)"
+
+
 class TestSendMessage:
     @staticmethod
     def _client_with_sdk(events: list[StreamResponse]) -> tuple[A2ABaseClient, MagicMock]:

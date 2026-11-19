@@ -164,7 +164,6 @@ async def _build_client(
     full: bool,
     enable_skills: bool,
     executor: AgentExecutor | None = None,
-    raise_server_exceptions: bool = True,
 ) -> TestClient:
     if full:
         with patch.dict(os.environ, _DEPLOYMENT_ENV):
@@ -186,7 +185,7 @@ async def _build_client(
         enable_unauthenticated_well_known_route=True,
         redacted_agent_card_config=DRAgentA2ARedactedAgentCardConfig(enable_skills=enable_skills),
     )
-    return TestClient(server.build(), raise_server_exceptions=raise_server_exceptions)
+    return TestClient(server.build())
 
 
 @pytest.fixture(params=["minimal", "full"])
@@ -330,66 +329,6 @@ async def test_message_stream_when_workflow_fails(failing_client: TestClient) ->
 
     # THEN the caller sees the same v0.3 events as before
     _assert_matches_golden("failing_rpc_message_stream", events)
-
-
-async def test_deprecated_card_path_serves_the_same_card(client: TestClient, scenario: str) -> None:
-    # GIVEN an authenticated caller using the v0.3 card path that predates agent-card.json
-    # WHEN it fetches the card there
-    response = client.get("/.well-known/agent.json", headers=AUTH_HEADERS)
-
-    # THEN it gets the same card as at the well-known path
-    assert response.status_code == 200
-    _assert_matches_golden(f"{scenario}_card_authenticated", response.json())
-
-
-async def test_deprecated_card_path_hides_the_agent_from_anonymous_callers() -> None:
-    # GIVEN an agent that has not opted in to anonymous discovery
-    card = await create_agent_card(_minimal_frontend_config(), cross_app_access=None, skills=[])
-    worker = DRAgentA2AFrontEndPluginWorker(
-        SimpleNamespace(general=SimpleNamespace(front_end=_minimal_frontend_config()))  # type: ignore[arg-type]
-    )
-    server = worker.create_a2a_server(card, _EchoExecutor())  # type: ignore[arg-type]
-
-    # WHEN an anonymous caller fetches the card at the deprecated path
-    with TestClient(server.build()) as test_client:
-        response = test_client.get("/.well-known/agent.json")
-
-    # THEN it gets the same generic 404 as at the well-known path
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Not Found"}
-
-
-async def test_http_extended_card(client: TestClient, scenario: str) -> None:
-    # GIVEN an authenticated caller of the deprecated v0.3 HTTP extended-card endpoint
-    # WHEN it fetches the extended card
-    response = client.get("/agent/authenticatedExtendedCard", headers=AUTH_HEADERS)
-
-    # THEN it gets the same card as the JSON-RPC method returns
-    assert response.status_code == 200
-    expected = json.loads((GOLDEN_DIR / f"{scenario}_rpc_extended_card.json").read_text())
-    assert response.json() == expected["result"]
-
-
-async def test_http_extended_card_without_identity(scenario: str) -> None:
-    # GIVEN a caller without an authenticated identity
-    if scenario == "minimal":
-        built = await _build_client(
-            _minimal_frontend_config(),
-            full=False,
-            enable_skills=False,
-            raise_server_exceptions=False,
-        )
-    else:
-        built = await _build_client(
-            _full_frontend_config(), full=True, enable_skills=True, raise_server_exceptions=False
-        )
-
-    # WHEN it fetches the extended card over HTTP
-    with built as test_client:
-        response = test_client.get("/agent/authenticatedExtendedCard")
-
-    # THEN it is refused with a server error, as a2a-sdk 0.3 did
-    assert response.status_code == 500
 
 
 async def test_message_send_with_invalid_auth_context() -> None:

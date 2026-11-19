@@ -20,6 +20,7 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 :mod:`~datarobot_genai.dragent.frontends.fastapi`.
 """
 
+import contextlib
 import inspect
 import json
 import logging
@@ -55,6 +56,7 @@ from starlette.responses import JSONResponse
 from starlette.responses import Response
 from starlette.routing import BaseRoute
 from starlette.routing import Route
+from starlette.types import Message
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
@@ -499,9 +501,8 @@ def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> Agen
     return card
 
 
-# Routes a2a-sdk 0.3 served that 1.x dropped; v0.3 callers may still use them.
-DEPRECATED_AGENT_CARD_PATH = "/.well-known/agent.json"
-DEPRECATED_EXTENDED_AGENT_CARD_PATH = "/agent/authenticatedExtendedCard"
+# The JSON-RPC method a2a-sdk 0.3 clients use to fetch the extended card. Answered here, not
+# by the SDK, because the SDK's v1.0 card cannot hold two OAuth flows in one scheme.
 EXTENDED_AGENT_CARD_METHOD = "agent/getAuthenticatedExtendedCard"
 
 
@@ -572,9 +573,19 @@ class DRAgentA2AStarletteApplication:
             card = await _maybe_await(self.extended_card_modifier(card, context))
         return card
 
-    async def _handle_get_extended_agent_card(self, request: Request) -> Response:
-        card = await self._extended_card(request)
-        return JSONResponse(card.model_dump(exclude_none=True, by_alias=True))
+    async def _extended_card_response(
+        self, request: Request, request_id: str | int | None
+    ) -> JSONResponse:
+        """Answer ``agent/getAuthenticatedExtendedCard`` with the v0.3 JSON-RPC envelope."""
+        try:
+            card = await self._extended_card(request)
+        except A2AError as exc:
+            error_response = build_error_response(request_id, exc)
+            # a2a-sdk 0.3 sent this error without ``data``.
+            error_response["error"].pop("data", None)
+            return JSONResponse(error_response)
+        result = card.model_dump(exclude_none=True, by_alias=True)
+        return JSONResponse({"jsonrpc": "2.0", "id": request_id, "result": result})
 
     def routes(self) -> list[BaseRoute]:
         """Return the agent-card and JSON-RPC routes, relative to where the app is mounted."""
@@ -587,35 +598,29 @@ class DRAgentA2AStarletteApplication:
         assert isinstance(jsonrpc_route, Route)
 
         async def handle_jsonrpc(request: Request) -> Response:
-            content_length = int(request.headers.get("content-length") or 0)
-            if self._max_content_length is not None and content_length > self._max_content_length:
-                error = InvalidRequestError(message="Payload too large")
-                return JSONResponse(build_error_response(None, error))
+            if (limit := self._max_content_length) is not None:
+                # Content-Length only spares reading an honest oversized body. A chunked body
+                # has none and a client can understate it, so the bytes are counted as well.
+                with contextlib.suppress(ValueError):
+                    if int(request.headers.get("content-length") or 0) > limit:
+                        return _payload_too_large()
+                request = _with_body_limit(request, limit)
             try:
-                call = json.loads(await request.body())
+                # Cached on the request, so the SDK route reads it from there.
+                body = await request.body()
+            except _BodyTooLargeError:
+                return _payload_too_large()
+            try:
+                call = json.loads(body)
             except ValueError:
                 call = None
             if isinstance(call, dict) and call.get("method") == EXTENDED_AGENT_CARD_METHOD:
-                try:
-                    card = await self._extended_card(request)
-                except A2AError as exc:
-                    response = build_error_response(call.get("id"), exc)
-                    # a2a-sdk 0.3 sent this error without ``data``.
-                    response["error"].pop("data", None)
-                    return JSONResponse(response)
-                result = card.model_dump(exclude_none=True, by_alias=True)
-                return JSONResponse({"jsonrpc": "2.0", "id": call.get("id"), "result": result})
+                return await self._extended_card_response(request, call.get("id"))
             return await jsonrpc_route.endpoint(request)
 
         return [
             Route("/", handle_jsonrpc, methods=["POST"]),
             Route(AGENT_CARD_WELL_KNOWN_PATH, self._handle_get_agent_card, methods=["GET"]),
-            Route(DEPRECATED_AGENT_CARD_PATH, self._handle_get_agent_card, methods=["GET"]),
-            Route(
-                DEPRECATED_EXTENDED_AGENT_CARD_PATH,
-                self._handle_get_extended_agent_card,
-                methods=["GET"],
-            ),
         ]
 
     def build(self) -> Starlette:
@@ -625,6 +630,32 @@ class DRAgentA2AStarletteApplication:
 
 async def _maybe_await(value: Awaitable[AgentCard] | AgentCard) -> AgentCard:
     return await value if inspect.isawaitable(value) else value
+
+
+def _payload_too_large() -> JSONResponse:
+    return JSONResponse(
+        build_error_response(None, InvalidRequestError(message="Payload too large"))
+    )
+
+
+class _BodyTooLargeError(Exception):
+    """The request body passed the size limit while it was being read."""
+
+
+def _with_body_limit(request: Request, limit: int) -> Request:
+    """Return the request with a ``receive`` that stops once the body passes ``limit`` bytes."""
+    received = 0
+
+    async def receive() -> Message:
+        nonlocal received
+        message = await request.receive()
+        if message["type"] == "http.request":
+            received += len(message.get("body", b""))
+            if received > limit:
+                raise _BodyTooLargeError
+        return message
+
+    return Request(request.scope, receive)
 
 
 class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):

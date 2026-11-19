@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
+from collections.abc import Iterable
 from datetime import timedelta
 from types import TracebackType
 from typing import TYPE_CHECKING
@@ -271,30 +272,18 @@ class A2ABaseClient:
         async for event in self.send_message(message_text, task_id=task_id, context_id=context_id):
             yield event
 
-    def extract_text_from_parts(self, parts: list) -> list[str]:
+    def extract_text_from_parts(self, parts: Iterable[Part]) -> list[str]:
         """
         Extract text content from A2A message parts.
 
         Args:
-            parts: List of A2A Part objects
+            parts: A2A Part objects
 
         Returns
         -------
-            List of text strings extracted from the parts
+            List of the non-empty text strings in the parts
         """
-        text_parts = []
-        for part in parts:
-            # Handle Part wrapper (RootModel)
-            if hasattr(part, "root"):
-                part_content = part.root
-            else:
-                part_content = part
-
-            # Extract text from TextPart
-            if getattr(part_content, "text", None):
-                text_parts.append(part_content.text)
-
-        return text_parts
+        return [part.text for part in parts if part.text]
 
     def extract_text_from_task(self, task: Task) -> str:
         """
@@ -317,12 +306,13 @@ class A2ABaseClient:
         """
         from a2a.types import TaskState
 
-        # Check task status
-        if task.status and task.status.state != TaskState.TASK_STATE_COMPLETED:
+        # Check task status. A protobuf submessage is never falsy, so ask for its presence.
+        if task.HasField("status") and task.status.state != TaskState.TASK_STATE_COMPLETED:
             # Task not completed - return status message or indicate in progress
             if task.status.state == TaskState.TASK_STATE_FAILED:
-                return f"Task failed: {task.status.message or 'Unknown error'}"
-            return f"Task in progress (state: {task.status.state})"
+                error = " ".join(self.extract_text_from_parts(task.status.message.parts))
+                return f"Task failed: {error or 'Unknown error'}"
+            return f"Task in progress (state: {TaskState.Name(task.status.state)})"
 
         # Priority 1: Extract from artifacts (structured output)
         if task.artifacts:
@@ -379,25 +369,32 @@ class A2ABaseClient:
         return str(last_event)
 
 
-def assemble_task(events: list[StreamResponse]) -> Task | None:
-    """Apply task events in order, as a2a-sdk 0.3 clients did before yielding the task.
+def apply_event(task: Task | None, event: StreamResponse) -> Task | None:
+    """Fold one event into the task accumulated so far, as a2a-sdk 0.3 clients did.
 
-    a2a-sdk 1.x clients yield each event as it arrives instead.
+    a2a-sdk 1.x clients yield each event as it arrives instead. A message event leaves the
+    task as it is. ``task`` may be changed in place.
     """
+    kind = event.WhichOneof("payload")
+    if kind == "task":
+        task = Task()
+        task.CopyFrom(event.task)
+    elif kind in ("status_update", "artifact_update"):
+        update = getattr(event, kind)
+        if task is None:
+            task = Task(id=update.task_id, context_id=update.context_id)
+        if kind == "artifact_update":
+            append_artifact_to_task(task, update)
+        else:
+            if update.status.HasField("message"):
+                task.history.append(update.status.message)
+            task.status.CopyFrom(update.status)
+    return task
+
+
+def assemble_task(events: list[StreamResponse]) -> Task | None:
+    """Apply task events in order and return the resulting task, if there is one."""
     task: Task | None = None
     for event in events:
-        kind = event.WhichOneof("payload")
-        if kind == "task":
-            task = Task()
-            task.CopyFrom(event.task)
-        elif kind in ("status_update", "artifact_update"):
-            update = getattr(event, kind)
-            if task is None:
-                task = Task(id=update.task_id, context_id=update.context_id)
-            if kind == "artifact_update":
-                append_artifact_to_task(task, update)
-            else:
-                if update.status.HasField("message"):
-                    task.history.append(update.status.message)
-                task.status.CopyFrom(update.status)
+        task = apply_event(task, event)
     return task

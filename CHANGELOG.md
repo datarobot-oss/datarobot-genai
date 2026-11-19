@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## 0.34.0 - 2026-11-20
 - `dragent`: A2A now runs on `a2a-sdk` 1.x. Agents still publish a v0.3 agent card and answer
   v0.3 callers. The `a2a_client` helper functions `get_task`, `cancel_task`, `send_message` and
-  `send_message_streaming` now return A2A objects as JSON dicts.
+  `send_message_streaming` return the same v0.3 objects as before.
+- `dragent`: The A2A server now enforces its request size limit on the bytes it receives, so a
+  chunked request, or one that understates `Content-Length`, can no longer exceed it.
+- `dragent`: Agents no longer serve the deprecated v0.3 routes `GET /.well-known/agent.json` and
+  `GET /agent/authenticatedExtendedCard`. Use `/.well-known/agent-card.json` and the JSON-RPC
+  method `agent/getAuthenticatedExtendedCard`, which is unchanged.
 - `dragent`: A2A clients and the agent card registry now read A2A v1.0 agent cards as well as
   v0.3 ones, and call each agent with the protocol version its card advertises. They also read
   v0.3 cards whose OAuth2 scheme lists several flows, keeping the client credentials flow.
