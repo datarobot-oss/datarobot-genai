@@ -2,7 +2,7 @@
 name = "datarobot-genai-docs"
 version = "0.1.0"
 description = "Documentation for DataRobot GenAI Library"
-requires-python = ">=3.11"
+requires-python = ">=3.11.5"
 dependencies = [
     "properdocs>=1.6.7",
     "mkdocs-material>=9.7.7",

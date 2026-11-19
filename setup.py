@@ -89,7 +89,7 @@ dragent = core + [
     "nvidia-nat-opentelemetry==1.9.0",
     "nvidia-nat-langchain[litellm]==1.9.0",  # NAT built-in agents require this; [litellm] moved to extra in 1.9
     "nvidia-nat-mcp==1.9.0",
-    "mem0ai>=1.0.8,<2.0.0",
+    "mem0ai>=2.0.18,<3.0.0",
     "starlette>=1.3.1",  # CVE fix
     "opentelemetry-instrumentation-fastapi>=0.64b0,<1.0.0",
     # >=0.4.0 for GEN_AI_AGENT_NAME
