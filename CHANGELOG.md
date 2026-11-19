@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.33.1 - 2026-11-19
+- Drop the `[async]` extra from `llama-index-llms-bedrock-converse` and require `>=0.15.3`. The
+  extra pulled in `aioboto3`, which pins `aiobotocore` and caps `boto3` below 1.40.62. Every
+  `litellm` release at or above the CVE floor (`>=1.100.4`) requires `boto3>=1.43.1`, so the two
+  could not resolve together. `aioboto3`, `aiobotocore` and `aioitertools` leave the lock.
+- Async Bedrock Converse calls (the moderations guards) keep working: from 0.15.3,
+  `llama-index-llms-bedrock-converse` runs them on a worker thread when `aioboto3` is absent.
+- Exclude `aioboto3` in `[tool.uv]` for the root and `e2e-tests` so nothing pulls it back in.
+
 ## 0.33.0 - 2026-11-18
 - `dragent`: move `mem0ai` to the 2.x line. The declared requirement goes from
   `mem0ai>=1.0.8,<2.0.0` to `mem0ai>=2.0.18,<3.0.0` to meet the CVE floor for CVE-2026-115324,
