@@ -15,7 +15,8 @@
 # Portions derived from NVIDIA NeMo Agent Toolkit (nvidia-nat-a2a 1.9.0).
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# Modified by DataRobot: import paths, formatting, docstrings and type annotations.
+# Modified by DataRobot: import paths, formatting, docstrings and type annotations; ported to
+# a2a-sdk 1.x.
 
 from __future__ import annotations
 
@@ -27,17 +28,20 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import httpx
-from a2a.client import A2ACardResolver
 from a2a.client import Client
+from a2a.client import ClientCallInterceptor
 from a2a.client import ClientConfig
-from a2a.client import ClientEvent
 from a2a.client import ClientFactory
+from a2a.server.tasks.task_manager import append_artifact_to_task
 from a2a.types import AgentCard
 from a2a.types import Message
 from a2a.types import Part
 from a2a.types import Role
+from a2a.types import SendMessageRequest
+from a2a.types import StreamResponse
 from a2a.types import Task
-from a2a.types import TextPart
+
+from datarobot_genai.dragent.a2a.cards import fetch_agent_card
 
 if TYPE_CHECKING:
     from nat.authentication.interfaces import AuthProviderBase
@@ -98,7 +102,7 @@ class A2ABaseClient:
             raise RuntimeError("Agent card not resolved")
 
         # 3) Setup authentication interceptors if auth is configured
-        interceptors = []
+        interceptors: list[ClientCallInterceptor] = []
         if self._auth_provider:
             try:
                 from a2a.client import AuthInterceptor
@@ -160,13 +164,10 @@ class A2ABaseClient:
             raise RuntimeError("httpx_client is not initialized")
 
         try:
-            resolver = A2ACardResolver(
-                httpx_client=self._httpx_client,
-                base_url=self._base_url,
-                agent_card_path=self._agent_card_path,
-            )
             logger.info("Fetching agent card from: %s%s", self._base_url, self._agent_card_path)
-            self._agent_card = await resolver.get_agent_card()
+            self._agent_card = await fetch_agent_card(
+                self._httpx_client, self._base_url, self._agent_card_path
+            )
             logger.info("Successfully fetched public agent card")
             # TODO: add support for authenticated extended agent card
         except Exception as e:
@@ -175,7 +176,7 @@ class A2ABaseClient:
 
     async def send_message(
         self, message_text: str, task_id: str | None = None, context_id: str | None = None
-    ) -> AsyncGenerator[ClientEvent | Message]:
+    ) -> AsyncGenerator[StreamResponse]:
         """
         Send a message to the agent and stream response events.
 
@@ -189,24 +190,21 @@ class A2ABaseClient:
 
         Yields
         ------
-            ClientEvent | Message: The agent's response events as they arrive.
-                ClientEvent is a tuple of (Task, UpdateEvent | None)
-                Message is a direct message response
+            StreamResponse: The agent's response events as they arrive, each holding a
+                message, a task, a status update or an artifact update
         """
         if not self._client:
             raise RuntimeError("A2ABaseClient not initialized")
 
-        text_part = TextPart(text=message_text)
-        parts: list[Part] = [Part(root=text_part)]
         message = Message(
-            role=Role.user,
-            parts=parts,
+            role=Role.ROLE_USER,
+            parts=[Part(text=message_text)],
             message_id=uuid4().hex,
             task_id=task_id,
             context_id=context_id,
         )
 
-        async for response in self._client.send_message(message):
+        async for response in self._client.send_message(SendMessageRequest(message=message)):
             yield response
 
     async def get_task(self, task_id: str, history_length: int | None = None) -> Task:
@@ -226,9 +224,9 @@ class A2ABaseClient:
         if not self._client:
             raise RuntimeError("A2ABaseClient not initialized")
 
-        from a2a.types import TaskQueryParams
+        from a2a.types import GetTaskRequest
 
-        params = TaskQueryParams(id=task_id, history_length=history_length)
+        params = GetTaskRequest(id=task_id, history_length=history_length)
         return await self._client.get_task(params)
 
     async def cancel_task(self, task_id: str) -> Task:
@@ -247,14 +245,14 @@ class A2ABaseClient:
         if not self._client:
             raise RuntimeError("A2ABaseClient not initialized")
 
-        from a2a.types import TaskIdParams
+        from a2a.types import CancelTaskRequest
 
-        params = TaskIdParams(id=task_id)
+        params = CancelTaskRequest(id=task_id)
         return await self._client.cancel_task(params)
 
     async def send_message_streaming(
         self, message_text: str, task_id: str | None = None, context_id: str | None = None
-    ) -> AsyncGenerator[ClientEvent | Message]:
+    ) -> AsyncGenerator[StreamResponse]:
         """
         Send a message to the agent and stream response events (alias for send_message).
 
@@ -268,7 +266,7 @@ class A2ABaseClient:
 
         Yields
         ------
-            ClientEvent | Message: The agent's response events as they arrive.
+            StreamResponse: The agent's response events as they arrive.
         """
         async for event in self.send_message(message_text, task_id=task_id, context_id=context_id):
             yield event
@@ -293,7 +291,7 @@ class A2ABaseClient:
                 part_content = part
 
             # Extract text from TextPart
-            if hasattr(part_content, "text"):
+            if getattr(part_content, "text", None):
                 text_parts.append(part_content.text)
 
         return text_parts
@@ -320,9 +318,9 @@ class A2ABaseClient:
         from a2a.types import TaskState
 
         # Check task status
-        if task.status and task.status.state != TaskState.completed:
+        if task.status and task.status.state != TaskState.TASK_STATE_COMPLETED:
             # Task not completed - return status message or indicate in progress
-            if task.status.state == TaskState.failed:
+            if task.status.state == TaskState.TASK_STATE_FAILED:
                 return f"Task failed: {task.status.message or 'Unknown error'}"
             return f"Task in progress (state: {task.status.state})"
 
@@ -342,28 +340,26 @@ class A2ABaseClient:
         if task.history:
             # Get the last agent message from history
             for msg in reversed(task.history):
-                if msg.role.value == "agent":  # Get last agent message
+                if msg.role == Role.ROLE_AGENT:  # Get last agent message
                     text_parts = self.extract_text_from_parts(msg.parts)
                     if text_parts:
                         return " ".join(text_parts)
 
         return "No response"
 
-    def extract_text_from_events(self, events: list) -> str:
+    def extract_text_from_events(self, events: list[StreamResponse]) -> str:
         """
         Extract text response from a list of A2A events.
 
-        This is a convenience method that handles both Message and ClientEvent types.
+        This is a convenience method that handles both message and task responses.
 
         Args:
-            events: List of A2A events (ClientEvent or Message objects)
+            events: List of A2A events, as yielded by send_message()
 
         Returns
         -------
             Extracted text response
         """
-        from a2a.types import Message as A2AMessage
-
         if not events:
             return "No response"
 
@@ -371,13 +367,37 @@ class A2ABaseClient:
         last_event = events[-1]
 
         # If it's a Message, extract text from parts
-        if isinstance(last_event, A2AMessage):
-            text_parts = self.extract_text_from_parts(last_event.parts)
-            return " ".join(text_parts) if text_parts else str(last_event)
+        if last_event.HasField("message"):
+            text_parts = self.extract_text_from_parts(last_event.message.parts)
+            return " ".join(text_parts) if text_parts else str(last_event.message)
 
-        # If it's a ClientEvent (Task, TaskStatusUpdateEvent), extract from task
-        if isinstance(last_event, tuple):
-            task, _ = last_event
+        # Otherwise the events describe a task
+        task = assemble_task(events)
+        if task is not None:
             return self.extract_text_from_task(task)
 
         return str(last_event)
+
+
+def assemble_task(events: list[StreamResponse]) -> Task | None:
+    """Apply task events in order, as a2a-sdk 0.3 clients did before yielding the task.
+
+    a2a-sdk 1.x clients yield each event as it arrives instead.
+    """
+    task: Task | None = None
+    for event in events:
+        kind = event.WhichOneof("payload")
+        if kind == "task":
+            task = Task()
+            task.CopyFrom(event.task)
+        elif kind in ("status_update", "artifact_update"):
+            update = getattr(event, kind)
+            if task is None:
+                task = Task(id=update.task_id, context_id=update.context_id)
+            if kind == "artifact_update":
+                append_artifact_to_task(task, update)
+            else:
+                if update.status.HasField("message"):
+                    task.history.append(update.status.message)
+                task.status.CopyFrom(update.status)
+    return task

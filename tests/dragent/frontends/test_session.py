@@ -21,7 +21,6 @@ from unittest.mock import patch
 
 import pytest
 from a2a.types import InvalidParamsError
-from a2a.utils.errors import ServerError
 from fastapi import Request
 from nat.builder.context import Context as NATContext
 from nat.builder.context import ContextState
@@ -395,33 +394,27 @@ class TestResolveIdentityFromHeaders:
         assert result == expected_workflow_key("dr-uid-abc")
 
     def test_raises_for_invalid_jwt(self):
-        with pytest.raises(ServerError) as exc_info:
+        with pytest.raises(InvalidParamsError) as exc_info:
             resolve_identity_from_headers({"x-datarobot-authorization-context": "garbage"})
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
-        assert "invalid or expired" in exc_info.value.error.message
+        assert "invalid or expired" in exc_info.value.message
 
     def test_raises_when_auth_handler_throws(self):
-        """Unexpected exceptions from _auth_handler.get_context are converted to ServerError."""
+        """Unexpected exceptions from _auth_handler.get_context are converted."""
         with (
             patch(AUTH_HANDLER_PATH, side_effect=RuntimeError("key store unavailable")),
-            pytest.raises(ServerError) as exc_info,
+            pytest.raises(InvalidParamsError),
         ):
             resolve_identity_from_headers({"x-datarobot-authorization-context": "jwt"})
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
 
     def test_invalid_auth_context_does_not_fall_through_to_gateway_user_id(self):
         """A present but invalid auth-context JWT must not fall back to gateway user ID."""
-        with pytest.raises(ServerError) as exc_info:
+        with pytest.raises(InvalidParamsError):
             resolve_identity_from_headers(
                 {
                     "x-datarobot-authorization-context": "garbage",
                     "x-datarobot-user-id": "64baa56996fb36e3eeeefc44",
                 }
             )
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
 
     def test_falls_back_to_gateway_user_id_header(self):
         result = resolve_identity_from_headers({"x-datarobot-user-id": "64baa56996fb36e3eeeefc44"})

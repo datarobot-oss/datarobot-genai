@@ -24,13 +24,15 @@ from urllib.parse import parse_qs
 
 import pytest
 import respx
-from a2a.types import AgentCapabilities
-from a2a.types import AgentCard
-from a2a.types import AgentExtension
-from a2a.types import ClientCredentialsOAuthFlow
-from a2a.types import OAuth2SecurityScheme
-from a2a.types import OAuthFlows
-from a2a.types import SecurityScheme
+from a2a.compat.v0_3.conversions import to_core_agent_card
+from a2a.compat.v0_3.types import AgentCapabilities
+from a2a.compat.v0_3.types import AgentCard
+from a2a.compat.v0_3.types import AgentExtension
+from a2a.compat.v0_3.types import ClientCredentialsOAuthFlow
+from a2a.compat.v0_3.types import OAuth2SecurityScheme
+from a2a.compat.v0_3.types import OAuthFlows
+from a2a.compat.v0_3.types import SecurityScheme
+from a2a.types import AgentCard as CoreAgentCard
 from httpx import Response
 from nat.authentication.interfaces import AuthProviderBase
 from nat.data_models.authentication import AuthResult
@@ -63,6 +65,21 @@ from tests.dragent.helpers import make_jwt
 _AGENT_URL = "http://agent.example.com"
 
 _MODULE = "datarobot_genai.dragent.plugins.auth_a2a_client"
+
+
+def _make_card(url: str) -> CoreAgentCard:
+    return to_core_agent_card(
+        AgentCard(
+            name="test",
+            description="test",
+            url=url,
+            version="1.0.0",
+            skills=[],
+            capabilities=AgentCapabilities(streaming=False),
+            default_input_modes=["text"],
+            default_output_modes=["text"],
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -311,18 +328,18 @@ class TestAuthenticatedA2ABaseClientResolveCard:
 
     @pytest.fixture
     def patched_resolver_env(self):
-        """Patch A2ACardResolver and Context; yield (mock_resolver_cls, mock_ctx)."""
+        """Patch fetch_agent_card and Context; yield (mock_fetch, mock_ctx, mock_httpx)."""
         with (
-            patch(f"{_MODULE}.A2ACardResolver") as mock_resolver_cls,
+            patch(f"{_MODULE}.fetch_agent_card", new_callable=AsyncMock) as mock_fetch,
             patch(f"{_MODULE}.Context") as mock_ctx,
             patch(f"{_MODULE}.httpx") as mock_httpx,
         ):
             mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=MagicMock())
             mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_httpx.Timeout = MagicMock()
-            mock_resolver_cls.return_value.get_agent_card = AsyncMock(return_value=MagicMock())
+            mock_fetch.return_value = MagicMock()
             mock_ctx.get.return_value.user_id = "test-user"
-            yield mock_resolver_cls, mock_ctx, mock_httpx
+            yield mock_fetch, mock_ctx, mock_httpx
 
     async def test_no_provider_unauthenticated(self, patched_resolver_env):
         """When no auth_provider is set, card is fetched with empty headers."""
@@ -663,8 +680,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         mock_auth_provider = MagicMock(spec=AuthProviderBase)
         mock_builder.get_auth_provider.return_value = mock_auth_provider
 
-        mock_card = MagicMock()
-        mock_card.url = "https://agent.example.com/a2a/"
+        mock_card = _make_card("https://agent.example.com/a2a/")
 
         mock_registry = AsyncMock()
         mock_registry.get = AsyncMock(return_value=mock_card)
@@ -681,14 +697,13 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
                 workload_id=None,
                 auth_headers=None,
             )
-            # Verify base_url derived from card.url
+            # Verify base_url derived from the card's RPC URL
             assert patched_fg_env.call_args.kwargs["base_url"] == "https://agent.example.com/a2a/"
 
     async def test_registry_external_id_path(
         self, registry_config_external, mock_builder, patched_fg_env
     ):
-        mock_card = MagicMock()
-        mock_card.url = "https://agent.example.com/a2a/"
+        mock_card = _make_card("https://agent.example.com/a2a/")
 
         mock_registry = AsyncMock()
         mock_registry.get = AsyncMock(return_value=mock_card)
@@ -714,8 +729,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         """GIVEN a workload registry block WHEN entered THEN the card is looked up by workload ID
         and the RPC base URL comes from the card.
         """
-        mock_card = MagicMock()
-        mock_card.url = "https://workload.example.com/a2a/"
+        mock_card = _make_card("https://workload.example.com/a2a/")
 
         mock_registry = AsyncMock()
         mock_registry.get = AsyncMock(return_value=mock_card)
@@ -744,9 +758,7 @@ class TestAuthenticatedA2AClientFunctionGroupRegistry:
         mock_auth_provider.authenticate.return_value = None
         mock_builder.get_auth_provider.return_value = mock_auth_provider
 
-        mock_card = MagicMock()
-        mock_card.url = "https://agent.example.com/a2a/"
-        mock_card.security_schemes = None
+        mock_card = _make_card("https://agent.example.com/a2a/")
 
         mock_registry = AsyncMock()
         mock_registry.get = AsyncMock(return_value=mock_card)
@@ -784,30 +796,12 @@ class TestFailedRegistryClient:
     """Verify _FailedRegistryClient provides agent_card for registration."""
 
     def test_agent_card_property_returns_card(self):
-        card = AgentCard(
-            name="test",
-            description="test",
-            url="https://test/",
-            version="1.0.0",
-            skills=[],
-            capabilities=AgentCapabilities(streaming=False),
-            default_input_modes=["text"],
-            default_output_modes=["text"],
-        )
+        card = _make_card("https://test/")
         client = _FailedRegistryClient(card)
         assert client.agent_card is card
 
     async def test_aexit_is_noop(self):
-        card = AgentCard(
-            name="test",
-            description="test",
-            url="https://test/",
-            version="1.0.0",
-            skills=[],
-            capabilities=AgentCapabilities(streaming=False),
-            default_input_modes=["text"],
-            default_output_modes=["text"],
-        )
+        card = _make_card("https://test/")
         client = _FailedRegistryClient(card)
         # Should not raise
         await client.__aexit__(None, None, None)
@@ -993,8 +987,8 @@ class _Agent:
         self.scope = f"{name}_scope"
         self.final_token = f"scoped-token-for-{name}"
 
-    def card(self) -> AgentCard:
-        return AgentCard(
+    def card(self) -> CoreAgentCard:
+        card = AgentCard(
             name=self.url,
             description="",
             url=self.url,
@@ -1038,6 +1032,7 @@ class _Agent:
                 ],
             ),
         )
+        return to_core_agent_card(card)
 
 
 def _credential_service_of(function_group):
@@ -1220,8 +1215,7 @@ class TestRegistryLookupFollowsAuthProvider:
 
     @staticmethod
     def _registry_returning_card():
-        card = MagicMock()
-        card.url = "https://agent.example.com/a2a/"
+        card = _make_card("https://agent.example.com/a2a/")
         registry = AsyncMock()
         registry.get = AsyncMock(return_value=card)
         return registry

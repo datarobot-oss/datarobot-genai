@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from a2a.types import AgentSkill
+from a2a.compat.v0_3.types import AgentSkill
 
 from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
@@ -818,3 +818,28 @@ class TestGetA2aEndpointUrlMountPath:
         }
         with patch.dict(os.environ, env, clear=True):
             assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected
+
+
+class TestJsonRpcPayloadLimit:
+    async def test_oversized_request_is_rejected_before_the_handler(self, a2a_frontend_config):
+        """GIVEN a server with a small max_content_length and a spy handler
+        WHEN a JSON-RPC request larger than the limit is posted
+        THEN it answers -32600 "Payload too large" and the handler is never reached.
+        """
+        from starlette.testclient import TestClient
+
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+        handler = MagicMock()
+        server = DRAgentA2AStarletteApplication(
+            agent_card=card, http_handler=handler, max_content_length=10
+        )
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": {}})
+
+        response = TestClient(server.build()).post(
+            "/", content=body, headers={"content-type": "application/json"}
+        )
+
+        error = response.json()["error"]
+        assert error["code"] == -32600
+        assert error["message"] == "Payload too large"
+        assert handler.mock_calls == []

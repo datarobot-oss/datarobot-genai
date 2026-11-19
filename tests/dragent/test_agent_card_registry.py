@@ -25,6 +25,7 @@ import pytest
 from a2a.types import AgentCard
 
 import datarobot_genai.dragent.memory_space_cache as memory_space_cache_module
+from datarobot_genai.dragent.a2a.cards import parse_agent_card
 from datarobot_genai.dragent.agent_card_registry import _MAX_PAGES
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
@@ -82,7 +83,7 @@ def _entry(dep_id=None, ext_id=None, wl_id=None, card=_SAMPLE_AGENT_CARD):
 
 
 def _card(**overrides) -> AgentCard:
-    return AgentCard.model_validate({**_SAMPLE_AGENT_CARD, **overrides})
+    return parse_agent_card({**_SAMPLE_AGENT_CARD, **overrides})
 
 
 def _parsed(
@@ -253,6 +254,32 @@ class TestAgentCardCacheRecord:
         entry = AgentCardCacheRecord(card=_card())
         assert not entry.is_within_staleness(0)
 
+    def test_json_round_trip_preserves_card(self):
+        # GIVEN a cache record
+        record = AgentCardCacheRecord(card=_card())
+
+        # WHEN it is dumped to JSON and loaded back
+        restored = AgentCardCacheRecord.model_validate_json(record.model_dump_json())
+
+        # THEN the card is unchanged
+        assert restored.card == record.card
+
+    def test_version_1_payload_with_v03_card_still_validates(self):
+        # GIVEN a version-1 payload written by the previous release (v0.3 card JSON)
+        payload = {
+            "version": 1,
+            "fetched_at": datetime.now(UTC).isoformat(),
+            "card": _SAMPLE_AGENT_CARD,
+            "source": "registry",
+            "deployment_id": "dep-1",
+        }
+
+        # WHEN it is validated
+        record = AgentCardCacheRecord.model_validate(payload)
+
+        # THEN the card parses
+        assert record.card == _card()
+
 
 # ---------------------------------------------------------------------------
 # Tests: _resolve_settings
@@ -331,6 +358,29 @@ class TestParseRegistryResponse:
         body = _registry_response({"id": "x", "deploymentId": "d", "agentCard": {"bad": True}})
         parsed = _parse_registry_response(body)
         assert parsed.cards == {}
+
+    def test_reads_v03_and_v10_cards(self):
+        # GIVEN a registry response with a v0.3 card and a v1.0 card
+        v10_card = {
+            "name": "V1 Agent",
+            "description": "An A2A v1.0 agent",
+            "version": "1.0.0",
+            "supportedInterfaces": [
+                {
+                    "url": "https://v1.example.com/a2a/",
+                    "protocolBinding": "JSONRPC",
+                    "protocolVersion": "1.0",
+                }
+            ],
+        }
+        body = _registry_response(_entry(dep_id="dep-v03"), _entry(dep_id="dep-v10", card=v10_card))
+
+        # WHEN it is parsed
+        parsed = _parse_registry_response(body)
+
+        # THEN both cards are read
+        assert parsed.cards["dep-v03"].name == "Test Agent"
+        assert parsed.cards["dep-v10"].name == "V1 Agent"
 
 
 class TestParseRegistryResponseDuplicates:

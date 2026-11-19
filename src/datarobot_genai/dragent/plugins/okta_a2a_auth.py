@@ -101,6 +101,7 @@ import jwt
 from a2a.types import AgentCard
 from cachetools import TLRUCache
 from datarobot.core.config import DataRobotAppFrameworkBaseSettings
+from google.protobuf.json_format import MessageToDict
 from jwt.algorithms import RSAAlgorithm
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
@@ -1013,13 +1014,13 @@ def _parse_security_schemes(card: AgentCard) -> tuple[str, list[str]]:
     if not oauth2:
         raise ValueError("Agent card securitySchemes has no 'oauth2' entry.")
 
-    flows = getattr(oauth2.root, "flows", None)
-    if not flows:
+    if not oauth2.HasField("oauth2_security_scheme"):
         raise ValueError("Agent card oauth2 security scheme has no flows.")
+    flows = oauth2.oauth2_security_scheme.flows
 
-    cc_flow = getattr(flows, "client_credentials", None)
-    if not cc_flow:
+    if not flows.HasField("client_credentials"):
         raise ValueError("Agent card oauth2 flows has no clientCredentials flow.")
+    cc_flow = flows.client_credentials
 
     token_url: str = str(cc_flow.token_url)
     scopes: list[str] = list(cc_flow.scopes.keys()) if cc_flow.scopes else []
@@ -1085,7 +1086,7 @@ def _parse_cross_app_extension(card: AgentCard) -> _CrossAppExtensionFields:
     )
     for ext in extensions:
         if ext.uri == _JWT_BEARER_GRANT_TYPE_URI:
-            params = ext.params or {}
+            params = MessageToDict(ext.params)
             try:
                 return _CrossAppExtensionFields.model_validate(params)
             except Exception as exc:

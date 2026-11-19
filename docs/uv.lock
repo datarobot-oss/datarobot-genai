@@ -162,7 +162,7 @@ source = { editable = "../" }
 
 [package.metadata]
 requires-dist = [
-    { name = "a2a-sdk", extras = ["http-server"], marker = "extra == 'dragent'", specifier = ">=0.3.20,<1.0.0" },
+    { name = "a2a-sdk", extras = ["http-server"], marker = "extra == 'dragent'", specifier = ">=1.3.0,<2.0.0" },
     { name = "ag-ui-protocol", marker = "extra == 'core'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'crewai'", specifier = "==0.1.15" },
     { name = "ag-ui-protocol", marker = "extra == 'dragent'", specifier = "==0.1.15" },

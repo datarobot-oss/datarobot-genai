@@ -61,6 +61,7 @@ from pydantic import field_validator
 from pydantic import model_validator
 
 from datarobot_genai.core.config import resolve_config
+from datarobot_genai.dragent.a2a.cards import parse_agent_card
 from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCardCacheBackend
 from datarobot_genai.dragent.agent_card_registry_backends import LookupKeyType
 from datarobot_genai.dragent.agent_card_registry_backends import MemoryAgentCardCacheBackend
@@ -357,7 +358,7 @@ def _parse_registry_response(
             )
             continue
         try:
-            card = AgentCard.model_validate(raw_card)
+            card = parse_agent_card(raw_card)
         except Exception:
             logger.warning(
                 "Failed to parse agent card for registry entry %s — skipping.",

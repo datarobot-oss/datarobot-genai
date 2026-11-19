@@ -1,0 +1,27 @@
+[
+  {
+    "id": "req-1",
+    "jsonrpc": "2.0",
+    "result": {
+      "contextId": "<id>",
+      "kind": "message",
+      "messageId": "<id>",
+      "parts": [
+        {
+          "kind": "text",
+          "text": "An error occurred while processing your request: workflow exploded"
+        }
+      ],
+      "role": "agent",
+      "taskId": "<id>"
+    }
+  },
+  {
+    "error": {
+      "code": -32603,
+      "message": "Internal error"
+    },
+    "id": "req-1",
+    "jsonrpc": "2.0"
+  }
+]

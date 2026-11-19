@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.34.0 - 2026-11-20
+- `dragent`: A2A now runs on `a2a-sdk` 1.x. Agents still publish a v0.3 agent card and answer
+  v0.3 callers. The `a2a_client` helper functions `get_task`, `cancel_task`, `send_message` and
+  `send_message_streaming` now return A2A objects as JSON dicts.
+- `dragent`: A2A clients and the agent card registry now read A2A v1.0 agent cards as well as
+  v0.3 ones, and call each agent with the protocol version its card advertises. They also read
+  v0.3 cards whose OAuth2 scheme lists several flows, keeping the client credentials flow.
+
 ## 0.33.0 - 2026-11-18
 - `dragent`: move `mem0ai` to the 2.x line. The declared requirement goes from
   `mem0ai>=1.0.8,<2.0.0` to `mem0ai>=2.0.18,<3.0.0` to meet the CVE floor for CVE-2026-115324,
