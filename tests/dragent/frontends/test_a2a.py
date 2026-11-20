@@ -20,6 +20,8 @@ from unittest.mock import patch
 
 import pytest
 from a2a.compat.v0_3.types import AgentSkill
+from starlette.responses import JSONResponse
+from starlette.responses import Response
 
 from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
@@ -41,6 +43,7 @@ from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
 from datarobot_genai.dragent.frontends.a2a import DRAgentA2AStarletteApplication
 from datarobot_genai.dragent.frontends.a2a import _make_public_card_modifier
+from datarobot_genai.dragent.frontends.a2a import _without_null_error_data
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.a2a import redact_agent_card
@@ -939,3 +942,51 @@ class TestJsonRpcPayloadLimit:
         payload = response.json()
         assert payload["id"] == 7
         assert payload["error"]["code"] == -32601
+
+
+class TestWithoutNullErrorData:
+    def test_drops_null_data_from_an_error(self):
+        # GIVEN a JSON-RPC error response the SDK wrote with ``"data": null``
+        error = {"code": -32603, "message": "Internal error", "data": None}
+        response = JSONResponse({"jsonrpc": "2.0", "id": "req-1", "error": error}, status_code=200)
+
+        # WHEN it is cleaned
+        cleaned = _without_null_error_data(response)
+
+        # THEN the key is gone and everything else is as it was, as in a2a-sdk 0.3
+        assert json.loads(cleaned.body) == {
+            "jsonrpc": "2.0",
+            "id": "req-1",
+            "error": {"code": -32603, "message": "Internal error"},
+        }
+        assert cleaned.status_code == 200
+
+    def test_keeps_data_that_carries_a_value(self):
+        # GIVEN an error that carries real data
+        response = JSONResponse({"error": {"code": -32602, "message": "Bad", "data": {"a": 1}}})
+
+        # WHEN it is cleaned
+        cleaned = _without_null_error_data(response)
+
+        # THEN it is returned as it is
+        assert cleaned is response
+
+    def test_leaves_a_success_response_alone(self):
+        # GIVEN a successful JSON-RPC response whose result happens to hold a null ``data``
+        response = JSONResponse({"jsonrpc": "2.0", "id": "req-1", "result": {"data": None}})
+
+        # WHEN it is cleaned
+        cleaned = _without_null_error_data(response)
+
+        # THEN it is returned as it is
+        assert cleaned is response
+
+    def test_leaves_a_response_that_is_not_json_alone(self):
+        # GIVEN a plain-text response
+        response = Response("not json", media_type="text/plain")
+
+        # WHEN it is cleaned
+        cleaned = _without_null_error_data(response)
+
+        # THEN it is returned as it is
+        assert cleaned is response

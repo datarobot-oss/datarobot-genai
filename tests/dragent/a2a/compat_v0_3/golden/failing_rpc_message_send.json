@@ -1,7 +1,6 @@
 {
   "error": {
     "code": -32603,
-    "data": null,
     "message": "Internal error"
   },
   "id": "req-1",

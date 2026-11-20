@@ -26,7 +26,3 @@
 # ``GET /agent/authenticatedExtendedCard``, which the SDK upgrade drops. The suite reaches the
 # card only through ``GET /.well-known/agent-card.json`` and the JSON-RPC method
 # ``agent/getAuthenticatedExtendedCard``, which stay. Keep deprecated routes out of this suite.
-#
-# Accepted differences from a2a-sdk 0.3 (a decision, not a re-record): the JSON-RPC error that
-# answers ``message/send`` when the workflow fails carries ``"data": null``, which 0.3 left out.
-# JSON-RPC 2.0 makes ``data`` optional, so ``golden/failing_rpc_message_send.json`` has it.

@@ -616,7 +616,7 @@ class DRAgentA2AStarletteApplication:
                 call = None
             if isinstance(call, dict) and call.get("method") == EXTENDED_AGENT_CARD_METHOD:
                 return await self._extended_card_response(request, call.get("id"))
-            return await jsonrpc_route.endpoint(request)
+            return _without_null_error_data(await jsonrpc_route.endpoint(request))
 
         return [
             Route("/", handle_jsonrpc, methods=["POST"]),
@@ -630,6 +630,31 @@ class DRAgentA2AStarletteApplication:
 
 async def _maybe_await(value: Awaitable[AgentCard] | AgentCard) -> AgentCard:
     return await value if inspect.isawaitable(value) else value
+
+
+def _without_null_error_data(response: Response) -> Response:
+    """Leave ``data`` out of a JSON-RPC error that has none.
+
+    The SDK writes ``"data": null`` into the error of a failed ``message/send``; a2a-sdk 0.3 omitted
+    the key, and a v0.3 caller keeps seeing the same response. Any other response, and an error
+    that does carry data, is returned as it is.
+    """
+    if not isinstance(response, JSONResponse):
+        return response
+    try:
+        payload = json.loads(bytes(response.body))
+    except ValueError:
+        return response
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict) or error.get("data", "") is not None:
+        return response
+    del error["data"]
+    headers = {
+        name: value
+        for name, value in response.headers.items()
+        if name.lower() not in ("content-length", "content-type")
+    }
+    return JSONResponse(payload, status_code=response.status_code, headers=headers)
 
 
 def _payload_too_large() -> JSONResponse:
