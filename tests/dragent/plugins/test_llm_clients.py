@@ -57,7 +57,7 @@ def test_apply_reasoning_config_gateway_provider() -> None:
         {"temperature": 0, "model": "vertex_ai/gemini-3.5-flash"}, llm_config
     )
     assert "temperature" not in config
-    assert config["extra_body"] == {"thinking_config": {"thinking_budget": 1024}}
+    assert config["extra_body"] == {"reasoning_effort": "low"}
 
 
 def test_apply_reasoning_config_deployment_provider() -> None:

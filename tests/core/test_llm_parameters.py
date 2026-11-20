@@ -62,7 +62,7 @@ def test_supports_parallel_tool_calls(model_name: str | None, expected: bool) ->
         ),
         pytest.param(
             "vertex_ai/gemini-3.5-flash",
-            {"thinking_config": {"thinking_budget": 1024}},
+            {"reasoning_effort": "low"},
             id="gemini",
         ),
         pytest.param(
