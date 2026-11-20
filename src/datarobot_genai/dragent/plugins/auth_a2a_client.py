@@ -24,12 +24,12 @@ from typing import Protocol
 from typing import runtime_checkable
 
 import httpx
-from a2a.client import A2ACardResolver
 from a2a.client import AuthInterceptor
 from a2a.client import ClientConfig
 from a2a.client import ClientFactory
 from a2a.types import AgentCapabilities
 from a2a.types import AgentCard
+from a2a.types import AgentInterface
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.builder import Builder
 from nat.builder.context import Context
@@ -42,6 +42,8 @@ from pydantic import Field
 from pydantic import model_validator
 
 from datarobot_genai.dragent.a2a.auth.credential_service import A2ACredentialService
+from datarobot_genai.dragent.a2a.cards import card_rpc_url
+from datarobot_genai.dragent.a2a.cards import fetch_agent_card
 from datarobot_genai.dragent.a2a.client.client_base import A2ABaseClient
 from datarobot_genai.dragent.a2a.client.client_config import A2AClientConfig
 from datarobot_genai.dragent.a2a.client.client_impl import A2AClientFunctionGroup
@@ -198,12 +200,9 @@ class _AuthenticatedA2ABaseClient(A2ABaseClient):
         timeout = httpx.Timeout(self._task_timeout.total_seconds())
         try:
             async with httpx.AsyncClient(timeout=timeout, headers=headers) as card_client:
-                resolver = A2ACardResolver(
-                    httpx_client=card_client,
-                    base_url=self._base_url,
-                    agent_card_path=self._agent_card_path,
+                self._agent_card = await fetch_agent_card(
+                    card_client, self._base_url, self._agent_card_path
                 )
-                self._agent_card = await resolver.get_agent_card()
                 logger.info("Successfully fetched agent card")
         except Exception as e:
             logger.error("Failed to fetch agent card from %s: %s", self._base_url, e)
@@ -521,7 +520,7 @@ def _make_placeholder_agent_card(error_msg: str) -> AgentCard:
     return AgentCard(
         name="unavailable",
         description=f"Agent card could not be resolved: {error_msg}",
-        url="https://unavailable/",
+        supported_interfaces=[AgentInterface(url="https://unavailable/")],
         version="0.0.0",
         skills=[],
         capabilities=AgentCapabilities(streaming=False),
@@ -618,7 +617,7 @@ class AuthenticatedA2AClientFunctionGroup(A2AClientFunctionGroup):
                 self._register_functions()
                 return self
 
-            base_url = str(pre_resolved_card.url)
+            base_url = card_rpc_url(pre_resolved_card)
             logger.info(
                 "Agent card resolved via central registry (deployment_id=%s, external_id=%s, "
                 "workload_id=%s), RPC base URL derived from card: %s",

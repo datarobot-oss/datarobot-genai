@@ -22,8 +22,8 @@ from unittest.mock import patch
 import httpx
 import pytest
 import respx
-from a2a.types import AgentCapabilities
-from a2a.types import AgentCard
+from a2a.compat.v0_3.types import AgentCapabilities
+from a2a.compat.v0_3.types import AgentCard
 from nat.builder.context import ContextState
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.runtime.loader import load_config

@@ -28,13 +28,15 @@ from urllib.parse import parse_qs
 import jwt
 import pytest
 import respx
-from a2a.types import AgentCapabilities
-from a2a.types import AgentCard
-from a2a.types import AgentExtension
-from a2a.types import ClientCredentialsOAuthFlow
-from a2a.types import OAuth2SecurityScheme
-from a2a.types import OAuthFlows
-from a2a.types import SecurityScheme
+from a2a.compat.v0_3.conversions import to_core_agent_card
+from a2a.compat.v0_3.types import AgentCapabilities
+from a2a.compat.v0_3.types import AgentCard
+from a2a.compat.v0_3.types import AgentExtension
+from a2a.compat.v0_3.types import ClientCredentialsOAuthFlow
+from a2a.compat.v0_3.types import OAuth2SecurityScheme
+from a2a.compat.v0_3.types import OAuthFlows
+from a2a.compat.v0_3.types import SecurityScheme
+from a2a.types import AgentCard as CoreAgentCard
 from cachetools import TLRUCache
 from httpx import Response
 from nat.builder.context import Context
@@ -44,6 +46,7 @@ from nat.data_models.authentication import HeaderCred
 from pydantic import SecretStr
 from pydantic import ValidationError
 
+from datarobot_genai.dragent.a2a.cards import parse_agent_card
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_FALLBACK_HEADER
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.inbound_token import InboundTokenExpiredError
@@ -94,7 +97,7 @@ _FAKE_JWK = {
 _FAKE_JWK_B64 = base64.b64encode(json.dumps(_FAKE_JWK).encode()).decode()
 
 
-def _make_agent_card() -> AgentCard:
+def _make_agent_card() -> CoreAgentCard:
     """Build a minimal AgentCard with the JWT Bearer Cross-Application Access extension."""
     cc_flow = ClientCredentialsOAuthFlow(
         token_url=_AGENT_TOKEN_URL,
@@ -128,7 +131,7 @@ def _make_agent_card() -> AgentCard:
             },
         },
     )
-    return AgentCard(
+    card = AgentCard(
         name="Test Agent",
         description="Test",
         url="https://agent.example.com/",
@@ -140,6 +143,7 @@ def _make_agent_card() -> AgentCard:
         security_schemes={"oauth2": security_scheme},
         security=[{"oauth2": ["read_data"]}],
     )
+    return to_core_agent_card(card)
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +410,7 @@ class TestParseCrossAppParams:
             security_schemes={"oauth2": security_scheme},
             security=[{"oauth2": ["read_data"]}],
         )
-        params = _parse_cross_app_params(card)
+        params = _parse_cross_app_params(to_core_agent_card(card))
         assert params.token_url == _AGENT_TOKEN_URL
         assert params.trusted_issuer == _TRUSTED_ISSUER
         assert params.exchange_audience == _EXCHANGE_AUDIENCE
@@ -450,8 +454,49 @@ class TestParseCrossAppParams:
             security_schemes={"oauth2": security_scheme},
             security=[{"oauth2": ["dr.impersonation"]}],
         )
-        params = _parse_cross_app_params(card)
+        params = _parse_cross_app_params(to_core_agent_card(card))
         assert set(params.id_jag_scopes) == {"dr.impersonation", "openid"}
+
+    _EXTENSION = {
+        "uri": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "params": {
+            "tokenEndpointAuthMethod": _AUTH_METHOD,
+            "tokenExchange": {"trustedIssuer": _TRUSTED_ISSUER, "audience": _EXCHANGE_AUDIENCE},
+            "tokenRequest": {"grantType": _GRANT_TYPE, "audience": _TARGET_AUDIENCE},
+        },
+    }
+    _CC_FLOW = {"tokenUrl": _AGENT_TOKEN_URL, "scopes": {"read_data": "Read access"}}
+
+    def test_v10_card(self):
+        # GIVEN the v1.0 card JSON of an agent with Cross-Application Access
+        card_json = {
+            "name": "Test Agent",
+            "description": "Test",
+            "version": "1.0.0",
+            "supportedInterfaces": [
+                {
+                    "url": "https://agent.example.com/",
+                    "protocolBinding": "JSONRPC",
+                    "protocolVersion": "1.0",
+                }
+            ],
+            "capabilities": {"streaming": False, "extensions": [self._EXTENSION]},
+            "defaultInputModes": ["text"],
+            "defaultOutputModes": ["text"],
+            "skills": [],
+            "securitySchemes": {
+                "oauth2": {"oauth2SecurityScheme": {"flows": {"clientCredentials": self._CC_FLOW}}}
+            },
+        }
+
+        # WHEN it is parsed and read for Cross-Application Access
+        params = _parse_cross_app_params(parse_agent_card(card_json))
+
+        # THEN the same parameters come out as from a v0.3 card
+        assert params.token_url == _AGENT_TOKEN_URL
+        assert params.id_jag_scopes == ["read_data"]
+        assert params.trusted_issuer == _TRUSTED_ISSUER
+        assert params.target_audience == _TARGET_AUDIENCE
 
 
 class TestConfigSerialization:

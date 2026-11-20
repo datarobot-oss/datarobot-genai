@@ -15,7 +15,9 @@
 # Portions derived from NVIDIA NeMo Agent Toolkit (nvidia-nat-a2a 1.9.0).
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# Modified by DataRobot: import paths, formatting, docstrings and type annotations.
+# Modified by DataRobot: import paths, formatting, docstrings and type annotations; ported to
+# a2a-sdk 1.x.
+
 """Bridge NAT AuthProviderBase to A2A SDK CredentialService."""
 
 import asyncio
@@ -29,6 +31,7 @@ from a2a.types import HTTPAuthSecurityScheme
 from a2a.types import OAuth2SecurityScheme
 from a2a.types import OpenIdConnectSecurityScheme
 from a2a.types import SecurityScheme
+from google.protobuf.message import Message
 from nat.authentication.interfaces import AuthProviderBase
 from nat.builder.context import Context
 from nat.data_models.authentication import AuthResult
@@ -39,6 +42,12 @@ from nat.data_models.authentication import HeaderCred
 from nat.data_models.authentication import QueryCred
 
 logger = logging.getLogger(__name__)
+
+
+def _scheme_body(scheme: SecurityScheme | None) -> Message | None:
+    """Return the concrete scheme a ``SecurityScheme`` holds, or None."""
+    which = scheme.WhichOneof("scheme") if scheme is not None else None
+    return getattr(scheme, which) if which else None
 
 
 class A2ACredentialService(CredentialService):
@@ -275,7 +284,7 @@ class A2ACredentialService(CredentialService):
             if is_compatible:
                 compatible_schemes.append(scheme_name)
             else:
-                incompatible_schemes.append((scheme_name, type(scheme.root).__name__))
+                incompatible_schemes.append((scheme_name, scheme.WhichOneof("scheme")))
 
         if not compatible_schemes:
             # Provider is not compatible with any security scheme
@@ -303,18 +312,19 @@ class A2ACredentialService(CredentialService):
             True if provider is compatible with the scheme
         """
         provider_type = type(self._auth_provider).__name__
+        body = _scheme_body(scheme)
 
         # OAuth2/OIDC schemes require OAuth2 providers
-        if isinstance(scheme.root, OAuth2SecurityScheme | OpenIdConnectSecurityScheme):
+        if isinstance(body, OAuth2SecurityScheme | OpenIdConnectSecurityScheme):
             return "OAuth2" in provider_type
 
         # API Key schemes (can be in header, query, or cookie)
-        if isinstance(scheme.root, APIKeySecurityScheme):
+        if isinstance(body, APIKeySecurityScheme):
             return "APIKey" in provider_type
 
         # HTTP Auth schemes (Basic or Bearer)
-        if isinstance(scheme.root, HTTPAuthSecurityScheme):
-            scheme_lower = scheme.root.scheme.lower()
+        if isinstance(body, HTTPAuthSecurityScheme):
+            scheme_lower = body.scheme.lower()
             if scheme_lower == "basic":
                 return "HTTPBasic" in provider_type or "BasicAuth" in provider_type
             elif scheme_lower == "bearer":
@@ -322,7 +332,7 @@ class A2ACredentialService(CredentialService):
                 return "OAuth2" in provider_type or "APIKey" in provider_type
 
         # Unknown or unsupported scheme type
-        logger.warning("Unknown security scheme type: %s", type(scheme.root).__name__)
+        logger.warning("Unknown security scheme type: %s", scheme.WhichOneof("scheme"))
         return False
 
     @staticmethod
@@ -344,14 +354,15 @@ class A2ACredentialService(CredentialService):
         """
         if not scheme_def:
             return False
+        body = _scheme_body(scheme_def)
 
         # Check for OAuth2 or OIDC schemes
-        if isinstance(scheme_def.root, OAuth2SecurityScheme | OpenIdConnectSecurityScheme):
+        if isinstance(body, OAuth2SecurityScheme | OpenIdConnectSecurityScheme):
             return True
 
         # Check for HTTP Bearer scheme
-        if isinstance(scheme_def.root, HTTPAuthSecurityScheme):
-            return scheme_def.root.scheme.lower() == "bearer"
+        if isinstance(body, HTTPAuthSecurityScheme):
+            return body.scheme.lower() == "bearer"
 
         return False
 
@@ -370,12 +381,13 @@ class A2ACredentialService(CredentialService):
         """
         if not scheme_def:
             return False
+        body = _scheme_body(scheme_def)
 
         # Check for API Key in header
-        if isinstance(scheme_def.root, APIKeySecurityScheme):
-            if scheme_def.root.in_ == "header":
+        if isinstance(body, APIKeySecurityScheme):
+            if body.location == "header":
                 # Match header name (case-insensitive)
-                return scheme_def.root.name.lower() == header_name.lower()
+                return body.name.lower() == header_name.lower()
 
         return False
 
@@ -394,11 +406,12 @@ class A2ACredentialService(CredentialService):
         """
         if not scheme_def:
             return False
+        body = _scheme_body(scheme_def)
 
         # Check for API Key in query
-        if isinstance(scheme_def.root, APIKeySecurityScheme):
-            if scheme_def.root.in_ == "query":
-                return scheme_def.root.name == param_name
+        if isinstance(body, APIKeySecurityScheme):
+            if body.location == "query":
+                return body.name == param_name
 
         return False
 
@@ -417,11 +430,12 @@ class A2ACredentialService(CredentialService):
         """
         if not scheme_def:
             return False
+        body = _scheme_body(scheme_def)
 
         # Check for API Key in cookie
-        if isinstance(scheme_def.root, APIKeySecurityScheme):
-            if scheme_def.root.in_ == "cookie":
-                return scheme_def.root.name == cookie_name
+        if isinstance(body, APIKeySecurityScheme):
+            if body.location == "cookie":
+                return body.name == cookie_name
 
         return False
 
@@ -439,9 +453,10 @@ class A2ACredentialService(CredentialService):
         """
         if not scheme_def:
             return False
+        body = _scheme_body(scheme_def)
 
         # Check for HTTP Basic scheme
-        if isinstance(scheme_def.root, HTTPAuthSecurityScheme):
-            return scheme_def.root.scheme.lower() == "basic"
+        if isinstance(body, HTTPAuthSecurityScheme):
+            return body.scheme.lower() == "basic"
 
         return False

@@ -15,24 +15,35 @@
 # Portions derived from NVIDIA NeMo Agent Toolkit (nvidia-nat-a2a 1.9.0).
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# Modified by DataRobot: import paths, formatting, docstrings and type annotations.
+# Modified by DataRobot: import paths, formatting, docstrings and type annotations; ported to
+# a2a-sdk 1.x.
 
 import logging
 from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterable
 from collections.abc import Awaitable
 from collections.abc import Callable
 from types import TracebackType
 from typing import TYPE_CHECKING
 from typing import Any
 
+from a2a.compat.v0_3.conversions import to_compat_message
+from a2a.compat.v0_3.conversions import to_compat_task
+from a2a.compat.v0_3.conversions import to_compat_task_artifact_update_event
+from a2a.compat.v0_3.conversions import to_compat_task_status_update_event
 from a2a.types import AgentCard
+from a2a.types import StreamResponse
+from a2a.types import Task
+from google.protobuf.json_format import MessageToDict
 from nat.builder.function import FunctionGroup
 from nat.builder.workflow_builder import Builder
 from nat.cli.register_workflow import register_per_user_function_group
 from pydantic import BaseModel
 from pydantic import Field
 
+from datarobot_genai.dragent.a2a.cards import card_rpc_url
 from datarobot_genai.dragent.a2a.client.client_base import A2ABaseClient
+from datarobot_genai.dragent.a2a.client.client_base import apply_event
 from datarobot_genai.dragent.a2a.client.client_config import A2AClientConfig
 
 if TYPE_CHECKING:
@@ -270,8 +281,8 @@ class A2AClientFunctionGroup(FunctionGroup):
                     "id": skill.id,
                     "name": skill.name,
                     "description": skill.description,
-                    "examples": skill.examples or [],
-                    "tags": skill.tags or [],
+                    "examples": list(skill.examples),
+                    "tags": list(skill.tags),
                 }
                 for skill in agent_card.skills
             ],
@@ -287,8 +298,10 @@ class A2AClientFunctionGroup(FunctionGroup):
             "name": agent_card.name,
             "description": agent_card.description,
             "version": agent_card.version,
-            "provider": agent_card.provider.model_dump() if agent_card.provider else None,
-            "url": agent_card.url,
+            "provider": MessageToDict(agent_card.provider)
+            if agent_card.HasField("provider")
+            else None,
+            "url": card_rpc_url(agent_card),
             "capabilities": {
                 "streaming": agent_card.capabilities.streaming
                 if agent_card.capabilities
@@ -301,13 +314,13 @@ class A2AClientFunctionGroup(FunctionGroup):
         """Get a task by delegating to the base client."""
         if not self._client:
             raise RuntimeError("A2A client not initialized")
-        return await self._client.get_task(params.task_id, params.history_length)
+        return to_compat_task(await self._client.get_task(params.task_id, params.history_length))
 
     async def _wrap_cancel_task(self, params: CancelTaskInput) -> Any:
         """Cancel a task by delegating to the base client."""
         if not self._client:
             raise RuntimeError("A2A client not initialized")
-        return await self._client.cancel_task(params.task_id)
+        return to_compat_task(await self._client.cancel_task(params.task_id))
 
     async def _send_message_advanced(self, params: SendMessageInput) -> list:
         """
@@ -322,12 +335,12 @@ class A2AClientFunctionGroup(FunctionGroup):
         if not self._client:
             raise RuntimeError("A2A client not initialized")
 
-        events = []
-        async for event in self._client.send_message(
-            params.query, params.task_id, params.context_id
-        ):
-            events.append(event)
-        return events
+        return [
+            event
+            async for event in _as_v0_3_events(
+                self._client.send_message(params.query, params.task_id, params.context_id)
+            )
+        ]
 
     async def _send_message_streaming(self, params: SendMessageInput) -> AsyncGenerator[Any, None]:
         """
@@ -344,10 +357,35 @@ class A2AClientFunctionGroup(FunctionGroup):
         if not self._client:
             raise RuntimeError("A2A client not initialized")
 
-        async for event in self._client.send_message_streaming(
-            params.query, params.task_id, params.context_id
+        async for event in _as_v0_3_events(
+            self._client.send_message_streaming(params.query, params.task_id, params.context_id)
         ):
             yield event
+
+
+async def _as_v0_3_events(events: AsyncIterable[StreamResponse]) -> AsyncGenerator[Any, None]:
+    """Yield A2A events as a2a-sdk 0.3 clients did, so tool output keeps its shape.
+
+    A message reply is a v0.3 ``Message``. Any other event is a ``(Task, update | None)``
+    tuple, where ``Task`` is the task accumulated so far and ``update`` is the status or
+    artifact update that just arrived.
+    """
+    task: Task | None = None
+    async for event in events:
+        match event.WhichOneof("payload"):
+            case "message":
+                yield to_compat_message(event.message)
+                continue
+            case "status_update":
+                update = to_compat_task_status_update_event(event.status_update)
+            case "artifact_update":
+                update = to_compat_task_artifact_update_event(event.artifact_update)
+            case _:
+                update = None
+        task = apply_event(task, event)
+        # An empty event before any task has nothing to report.
+        if task is not None:
+            yield to_compat_task(task), update
 
 
 @register_per_user_function_group(config_type=A2AClientConfig)  # type: ignore[untyped-decorator]

@@ -15,7 +15,9 @@
 # Portions derived from NVIDIA NeMo Agent Toolkit (nvidia-nat-a2a 1.9.0).
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# Modified by DataRobot: import paths, formatting, docstrings and type annotations.
+# Modified by DataRobot: import paths, formatting, docstrings and type annotations; ported to
+# a2a-sdk 1.x.
+
 """Adapter to bridge NAT workflows with A2A AgentExecutor interface.
 
 This module implements a message-only A2A agent for Phase 1, providing stateless
@@ -24,14 +26,13 @@ request/response interactions without task lifecycle management.
 
 import logging
 
+from a2a.helpers import new_text_message
 from a2a.server.agent_execution import AgentExecutor
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
 from a2a.types import InternalError
 from a2a.types import InvalidParamsError
 from a2a.types import UnsupportedOperationError
-from a2a.utils import new_agent_text_message
-from a2a.utils.errors import ServerError
 from nat.runtime.session import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -88,18 +89,19 @@ class NATWorkflowAgentExecutor(AgentExecutor):
 
         Raises
         ------
-            ServerError: If validation fails or workflow execution errors occur
+            InvalidParamsError: If the request has no user input
+            InternalError: If the workflow fails
         """
         # Validate the request
         error = self._validate_request(context)
         if error:
-            raise ServerError(error=InvalidParamsError())
+            raise InvalidParamsError()
 
         # Extract query from the message
         query = context.get_user_input()
         if not query:
             logger.error("No user input found in context")
-            raise ServerError(error=InvalidParamsError())
+            raise InvalidParamsError()
 
         # Extract IDs for tracing (stored but not used for state management in Phase 1)
         context_id = context.context_id
@@ -126,7 +128,7 @@ class NATWorkflowAgentExecutor(AgentExecutor):
             )
 
             # Create and send the response message (message-only pattern)
-            response_message = new_agent_text_message(
+            response_message = new_text_message(
                 response_text,
                 context_id=context_id,
                 task_id=task_id,
@@ -143,13 +145,13 @@ class NATWorkflowAgentExecutor(AgentExecutor):
             )
 
             # Send error message back to client
-            error_message = new_agent_text_message(
+            error_message = new_text_message(
                 f"An error occurred while processing your request: {str(e)}",
                 context_id=context_id,
                 task_id=task_id,
             )
             await event_queue.enqueue_event(error_message)
-            raise ServerError(error=InternalError()) from e
+            raise InternalError() from e
 
     def _validate_request(self, context: RequestContext) -> bool:
         """Validate the incoming request context.
@@ -184,9 +186,9 @@ class NATWorkflowAgentExecutor(AgentExecutor):
 
         Raises
         ------
-            ServerError: Always raises UnsupportedOperationError
+            UnsupportedOperationError: Always
         """
         logger.warning(
             "Task cancellation requested but not supported in message-only mode (Phase 1)"
         )
-        raise ServerError(error=UnsupportedOperationError())
+        raise UnsupportedOperationError()

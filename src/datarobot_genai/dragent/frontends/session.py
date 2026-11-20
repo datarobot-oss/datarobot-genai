@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING
 from typing import Literal
 
 from a2a.types import InvalidParamsError
-from a2a.utils.errors import ServerError
 from fastapi import Request
 from nat.builder.context import ContextState
 from nat.data_models.api_server import Request as NATRequest
@@ -131,8 +130,7 @@ def resolve_identity_from_headers(
        ``UserInfo._from_session_cookie`` to produce the same UUID5 workflow
        key as the AG-UI path.  When this header is present but validation
        fails, behaviour depends on *on_invalid_auth_context*: ``"error"``
-       raises :class:`~a2a.utils.errors.ServerError` with
-       :class:`~a2a.types.InvalidParamsError`` (no fall-through to other
+       raises :class:`~a2a.types.InvalidParamsError` (no fall-through to other
        headers or ``context_id``); ``"none"`` returns ``None``.
     2. ``X-DataRobot-User-Id`` -- raw DataRobot user ID injected by the API
        gateway, tied to the API-key owner.  Used only when the auth-context
@@ -154,7 +152,7 @@ def resolve_identity_from_headers(
             auth_ctx = None
         if auth_ctx is None:
             if on_invalid_auth_context == "error":
-                raise ServerError(error=InvalidParamsError(message=_INVALID_AUTH_CONTEXT_MSG))
+                raise InvalidParamsError(message=_INVALID_AUTH_CONTEXT_MSG)
             return None
         return UserInfo._from_session_cookie(auth_ctx.user.id).get_user_id()
 

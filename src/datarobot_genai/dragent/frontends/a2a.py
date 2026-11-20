@@ -20,29 +20,43 @@ and endpoint URL resolution.  The FastAPI framework glue lives in
 :mod:`~datarobot_genai.dragent.frontends.fastapi`.
 """
 
+import contextlib
+import inspect
+import json
 import logging
 from collections.abc import Awaitable
 from collections.abc import Callable
 
 import httpx
-from a2a.server.apps import A2AStarletteApplication
-from a2a.server.apps.jsonrpc.jsonrpc_app import CallContextBuilder
+from a2a.compat.v0_3.conversions import to_core_agent_card
+from a2a.compat.v0_3.types import AgentCapabilities
+from a2a.compat.v0_3.types import AgentCard
+from a2a.compat.v0_3.types import AgentExtension
+from a2a.compat.v0_3.types import AgentSkill
+from a2a.compat.v0_3.types import AuthorizationCodeOAuthFlow
+from a2a.compat.v0_3.types import ClientCredentialsOAuthFlow
+from a2a.compat.v0_3.types import HTTPAuthSecurityScheme
+from a2a.compat.v0_3.types import OAuth2SecurityScheme
+from a2a.compat.v0_3.types import OAuthFlows
+from a2a.compat.v0_3.types import SecurityScheme
 from a2a.server.context import ServerCallContext
 from a2a.server.request_handlers.request_handler import RequestHandler
-from a2a.types import AgentCapabilities
-from a2a.types import AgentCard
-from a2a.types import AgentExtension
-from a2a.types import AgentSkill
-from a2a.types import AuthorizationCodeOAuthFlow
-from a2a.types import ClientCredentialsOAuthFlow
-from a2a.types import HTTPAuthSecurityScheme
-from a2a.types import InvalidParamsError
-from a2a.types import OAuth2SecurityScheme
-from a2a.types import OAuthFlows
-from a2a.types import SecurityScheme
-from a2a.utils.errors import ServerError
+from a2a.server.request_handlers.response_helpers import build_error_response
+from a2a.server.routes import DefaultServerCallContextBuilder
+from a2a.server.routes import ServerCallContextBuilder
+from a2a.server.routes import create_jsonrpc_routes
+from a2a.types import InternalError
+from a2a.types import InvalidRequestError
+from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
+from a2a.utils.errors import A2AError
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
+from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.responses import Response
+from starlette.routing import BaseRoute
+from starlette.routing import Route
+from starlette.types import Message
 
 from datarobot_genai.core.runtime import get_deployment_id
 from datarobot_genai.core.runtime import get_workload_id
@@ -483,16 +497,21 @@ def _extended_card_modifier(card: AgentCard, context: ServerCallContext) -> Agen
     """Serve the extended card for ``agent/getAuthenticatedExtendedCard`` callers."""
     headers = headers_from_a2a_state(context.state)
     if resolve_identity_from_headers(headers) is None:
-        raise ServerError(
-            error=InvalidParamsError(
-                message="Authenticated identity required for extended agent card"
-            )
-        )
+        raise InternalError(message="Authenticated identity required for extended agent card")
     return card
 
 
-class DRAgentA2AStarletteApplication(A2AStarletteApplication):
+# The JSON-RPC method a2a-sdk 0.3 clients use to fetch the extended card. Answered here, not
+# by the SDK, because the SDK's v1.0 card cannot hold two OAuth flows in one scheme.
+EXTENDED_AGENT_CARD_METHOD = "agent/getAuthenticatedExtendedCard"
+
+
+class DRAgentA2AStarletteApplication:
     """A2A server that gates public agent-card access on per-agent developer opt-in.
+
+    Replaces ``a2a-sdk`` 0.3's ``A2AStarletteApplication``, which 1.x removed. Cards are served
+    from the v0.3 model, as before; the SDK's v1.0 card cannot hold two OAuth flows in one
+    scheme. Other JSON-RPC calls go to the SDK, which answers v0.3 callers.
 
     Unauthenticated access also depends on platform-level opt-in per cluster to
     route anonymous traffic to the agent; this class enforces only the agent-side
@@ -504,7 +523,7 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
         agent_card: AgentCard,
         http_handler: RequestHandler,
         extended_agent_card: AgentCard | None = None,
-        context_builder: CallContextBuilder | None = None,
+        context_builder: ServerCallContextBuilder | None = None,
         card_modifier: Callable[[AgentCard], Awaitable[AgentCard] | AgentCard] | None = None,
         extended_card_modifier: Callable[
             [AgentCard, ServerCallContext], Awaitable[AgentCard] | AgentCard
@@ -515,17 +534,15 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
         enable_unauthenticated_well_known_route: bool = False,
     ) -> None:
         self._enable_unauthenticated_well_known_route = enable_unauthenticated_well_known_route
-        super().__init__(
-            agent_card=agent_card,
-            http_handler=http_handler,
-            extended_agent_card=extended_agent_card,
-            context_builder=context_builder,
-            card_modifier=card_modifier,
-            extended_card_modifier=extended_card_modifier,
-            max_content_length=max_content_length,
-        )
+        self.agent_card = agent_card
+        self.http_handler = http_handler
+        self.extended_agent_card = extended_agent_card
+        self._context_builder = context_builder or DefaultServerCallContextBuilder()
+        self.card_modifier = card_modifier
+        self.extended_card_modifier = extended_card_modifier
+        self._max_content_length = max_content_length
 
-    async def _handle_get_agent_card(self, request):  # type: ignore[no-untyped-def]
+    async def _handle_get_agent_card(self, request: Request) -> Response:
         headers = normalise_headers(dict(request.headers))
         token = _a2a_headers.set(headers)
         try:
@@ -542,15 +559,134 @@ class DRAgentA2AStarletteApplication(A2AStarletteApplication):
                     "requires platform-level opt-in per cluster)"
                 )
                 return JSONResponse(status_code=404, content=AGENT_CARD_NOT_FOUND_BODY)
-            return await super()._handle_get_agent_card(request)
+            card = self.agent_card
+            if self.card_modifier:
+                card = await _maybe_await(self.card_modifier(card))
+            return JSONResponse(card.model_dump(exclude_none=True, by_alias=True))
         finally:
             _a2a_headers.reset(token)
+
+    async def _extended_card(self, request: Request) -> AgentCard:
+        card = self.extended_agent_card or self.agent_card
+        if self.extended_card_modifier:
+            context = self._context_builder.build(request)
+            card = await _maybe_await(self.extended_card_modifier(card, context))
+        return card
+
+    async def _extended_card_response(
+        self, request: Request, request_id: str | int | None
+    ) -> JSONResponse:
+        """Answer ``agent/getAuthenticatedExtendedCard`` with the v0.3 JSON-RPC envelope."""
+        try:
+            card = await self._extended_card(request)
+        except A2AError as exc:
+            error_response = build_error_response(request_id, exc)
+            # a2a-sdk 0.3 sent this error without ``data``.
+            error_response["error"].pop("data", None)
+            return JSONResponse(error_response)
+        result = card.model_dump(exclude_none=True, by_alias=True)
+        return JSONResponse({"jsonrpc": "2.0", "id": request_id, "result": result})
+
+    def routes(self) -> list[BaseRoute]:
+        """Return the agent-card and JSON-RPC routes, relative to where the app is mounted."""
+        (jsonrpc_route,) = create_jsonrpc_routes(
+            self.http_handler,
+            rpc_url="/",
+            context_builder=self._context_builder,
+            enable_v0_3_compat=True,
+        )
+        assert isinstance(jsonrpc_route, Route)
+
+        async def handle_jsonrpc(request: Request) -> Response:
+            if (limit := self._max_content_length) is not None:
+                # Content-Length only spares reading an honest oversized body. A chunked body
+                # has none and a client can understate it, so the bytes are counted as well.
+                with contextlib.suppress(ValueError):
+                    if int(request.headers.get("content-length") or 0) > limit:
+                        return _payload_too_large()
+                request = _with_body_limit(request, limit)
+            try:
+                # Cached on the request, so the SDK route reads it from there.
+                body = await request.body()
+            except _BodyTooLargeError:
+                return _payload_too_large()
+            try:
+                call = json.loads(body)
+            except ValueError:
+                call = None
+            if isinstance(call, dict) and call.get("method") == EXTENDED_AGENT_CARD_METHOD:
+                return await self._extended_card_response(request, call.get("id"))
+            return _without_null_error_data(await jsonrpc_route.endpoint(request))
+
+        return [
+            Route("/", handle_jsonrpc, methods=["POST"]),
+            Route(AGENT_CARD_WELL_KNOWN_PATH, self._handle_get_agent_card, methods=["GET"]),
+        ]
+
+    def build(self) -> Starlette:
+        """Build the Starlette app to mount under the A2A mount path."""
+        return Starlette(routes=self.routes())
+
+
+async def _maybe_await(value: Awaitable[AgentCard] | AgentCard) -> AgentCard:
+    return await value if inspect.isawaitable(value) else value
+
+
+def _without_null_error_data(response: Response) -> Response:
+    """Leave ``data`` out of a JSON-RPC error that has none.
+
+    The SDK writes ``"data": null`` into the error of a failed ``message/send``; a2a-sdk 0.3 omitted
+    the key, and a v0.3 caller keeps seeing the same response. Any other response, and an error
+    that does carry data, is returned as it is.
+    """
+    if not isinstance(response, JSONResponse):
+        return response
+    try:
+        payload = json.loads(bytes(response.body))
+    except ValueError:
+        return response
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if not isinstance(error, dict) or error.get("data", "") is not None:
+        return response
+    del error["data"]
+    headers = {
+        name: value
+        for name, value in response.headers.items()
+        if name.lower() not in ("content-length", "content-type")
+    }
+    return JSONResponse(payload, status_code=response.status_code, headers=headers)
+
+
+def _payload_too_large() -> JSONResponse:
+    return JSONResponse(
+        build_error_response(None, InvalidRequestError(message="Payload too large"))
+    )
+
+
+class _BodyTooLargeError(Exception):
+    """The request body passed the size limit while it was being read."""
+
+
+def _with_body_limit(request: Request, limit: int) -> Request:
+    """Return the request with a ``receive`` that stops once the body passes ``limit`` bytes."""
+    received = 0
+
+    async def receive() -> Message:
+        nonlocal received
+        message = await request.receive()
+        if message["type"] == "http.request":
+            received += len(message.get("body", b""))
+            if received > limit:
+                raise _BodyTooLargeError
+        return message
+
+    return Request(request.scope, receive)
 
 
 class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
     """A2A worker with identity-keyed public cards and an authenticated extended card."""
 
-    def create_a2a_server(
+    def create_a2a_server(  # type: ignore[override]
         self,
         agent_card: AgentCard,
         agent_executor: NATWorkflowAgentExecutor,
@@ -574,10 +710,12 @@ class DRAgentA2AFrontEndPluginWorker(A2AFrontEndPluginWorker):
         Authenticated callers always receive the full card. ``extended_agent_card``
         is also wired for ``agent/getAuthenticatedExtendedCard`` clients.
         """
-        base_server = super().create_a2a_server(agent_card, agent_executor)
+        request_handler = self.create_request_handler(
+            to_core_agent_card(agent_card), agent_executor
+        )
         server = DRAgentA2AStarletteApplication(
-            agent_card=base_server.agent_card,
-            http_handler=base_server.handler.request_handler,
+            agent_card=agent_card,
+            http_handler=request_handler,
             extended_agent_card=agent_card,
             card_modifier=_make_public_card_modifier(redacted_agent_card_config),
             extended_card_modifier=_extended_card_modifier,

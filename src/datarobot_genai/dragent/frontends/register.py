@@ -17,7 +17,7 @@ import typing
 import warnings
 from collections.abc import AsyncGenerator
 
-from a2a.types import AgentSkill
+from a2a.compat.v0_3.types import AgentSkill
 from nat.cli.register_workflow import register_front_end
 from nat.data_models.api_server import GlobalTypeConverter
 from nat.data_models.config import Config
