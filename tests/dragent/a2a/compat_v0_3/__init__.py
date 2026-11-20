@@ -21,3 +21,8 @@
 # Rule for SDK upgrades: this suite must pass with its assertions and its ``golden/`` files left
 # as they are. A change to either means a v0.3 caller would notice the upgrade, so it needs an
 # explicit decision, not a quiet re-record. Imports and adapters may change to follow the SDK.
+#
+# Deliberately not pinned: the deprecated v0.3 routes ``GET /.well-known/agent.json`` and
+# ``GET /agent/authenticatedExtendedCard``, which the SDK upgrade drops. The suite reaches the
+# card only through ``GET /.well-known/agent-card.json`` and the JSON-RPC method
+# ``agent/getAuthenticatedExtendedCard``, which stay. Keep deprecated routes out of this suite.
