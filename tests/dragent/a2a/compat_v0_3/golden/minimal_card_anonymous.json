@@ -1,0 +1,34 @@
+{
+  "capabilities": {
+    "pushNotifications": false,
+    "streaming": true
+  },
+  "defaultInputModes": [
+    "text",
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text",
+    "text/plain"
+  ],
+  "description": "Echoes",
+  "name": "Echo Agent",
+  "preferredTransport": "JSONRPC",
+  "protocolVersion": "0.3.0",
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "securitySchemes": {
+    "bearerAuth": {
+      "description": "DataRobot API token supplied as an Authorization Bearer header.",
+      "scheme": "bearer",
+      "type": "http"
+    }
+  },
+  "skills": [],
+  "supportsAuthenticatedExtendedCard": true,
+  "url": "http://localhost:8000/a2a/",
+  "version": "1.0.0"
+}
