@@ -40,8 +40,10 @@ _ANTHROPIC_SONNET_EXTRA_BODY = {
 _ANTHROPIC_OPUS_EXTRA_BODY = {
     "thinking": {"type": "adaptive"},
 }
+# The LLM Gateway rejects `thinking_config` (IR-992 field allowlist). litellm maps
+# `reasoning_effort` to Gemini's thinkingConfig itself (thinkingLevel on Gemini 3).
 _GEMINI_EXTRA_BODY = {
-    "thinking_config": {"thinking_budget": 1024},
+    "reasoning_effort": "low",
 }
 _OPENAI_EXTRA_BODY = {
     "reasoning_effort": "low",
