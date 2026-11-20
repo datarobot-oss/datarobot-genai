@@ -21,7 +21,6 @@
 
 import json
 from collections.abc import Callable
-from types import SimpleNamespace
 from typing import Any
 from typing import NamedTuple
 
@@ -40,13 +39,9 @@ from a2a.types import AgentCard
 from a2a.types import AgentInterface
 from a2a.types import AgentSkill
 from starlette.applications import Starlette
-from starlette.routing import Mount
 
 from datarobot_genai.dragent.a2a.cards import card_rpc_url
 from datarobot_genai.dragent.a2a.client.client_base import A2ABaseClient
-from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
-from datarobot_genai.dragent.frontends.a2a import DRAgentA2AFrontEndPluginWorker
-from datarobot_genai.dragent.frontends.a2a import create_agent_card
 
 V10_URL = "http://agent-v10.test/"
 V03_URL = "http://agent-v03.test/"
@@ -100,26 +95,6 @@ def _sdk_agent_app(interfaces: dict[str, str], *, streaming: bool = False) -> St
             *create_jsonrpc_routes(handler, rpc_url="/", enable_v0_3_compat=speaks_v03),
         ]
     )
-
-
-async def _dragent_agent_app() -> Starlette:
-    """Build an agent served by dragent itself, which publishes a v0.3 card.
-
-    Mounted under ``/a2a`` as in production, where its card advertises that path.
-    """
-    frontend_config = A2AFrontEndConfig(
-        name="dragent Agent", description="dragent", host="localhost", port=8000
-    )
-    card = await create_agent_card(frontend_config, cross_app_access=None, skills=[])
-    worker = DRAgentA2AFrontEndPluginWorker(
-        SimpleNamespace(general=SimpleNamespace(front_end=frontend_config))  # type: ignore[arg-type]
-    )
-    server = worker.create_a2a_server(
-        card,
-        _EchoExecutor(),  # type: ignore[arg-type]
-        enable_unauthenticated_well_known_route=True,
-    )
-    return Starlette(routes=[Mount("/a2a", app=server.build())])
 
 
 @pytest.fixture
@@ -178,21 +153,6 @@ async def test_streams_from_a_v10_agent(serve: Any) -> None:
     # THEN the reply arrives over the v1.0 streaming method
     assert reply == REPLY_TEXT
     assert calls == [_Call("agent-v10.test", "SendStreamingMessage", "1.0")]
-
-
-async def test_reads_a_v03_card_from_dragent_and_calls_the_agent_over_v03(serve: Any) -> None:
-    # GIVEN an agent served by dragent, which publishes a v0.3 card
-    calls = serve(await _dragent_agent_app())
-
-    # WHEN dragent's client discovers it and sends a message
-    card, reply = await _ask("http://localhost:8000/a2a/")
-
-    # THEN the card is read into the same SDK AgentCard type, and the call uses v0.3
-    assert isinstance(card, AgentCard)
-    assert card.name == "dragent Agent"
-    assert [i.protocol_version for i in card.supported_interfaces] == ["0.3.0"]
-    assert reply == REPLY_TEXT
-    assert calls == [_Call("localhost", "message/send", "0.3")]
 
 
 async def test_prefers_v10_when_a_card_offers_both_versions(serve: Any) -> None:

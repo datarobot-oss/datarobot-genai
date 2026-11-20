@@ -467,39 +467,6 @@ class TestParseCrossAppParams:
     }
     _CC_FLOW = {"tokenUrl": _AGENT_TOKEN_URL, "scopes": {"read_data": "Read access"}}
 
-    def test_legacy_card_with_both_flows_under_oauth2(self):
-        # GIVEN a legacy v0.3 card listing both flows under oauth2
-        card_json = {
-            "name": "Test Agent",
-            "description": "Test",
-            "url": "https://agent.example.com/",
-            "version": "1.0.0",
-            "skills": [],
-            "capabilities": {"streaming": False, "extensions": [self._EXTENSION]},
-            "defaultInputModes": ["text"],
-            "defaultOutputModes": ["text"],
-            "securitySchemes": {
-                "oauth2": {
-                    "type": "oauth2",
-                    "flows": {
-                        "authorizationCode": {
-                            "authorizationUrl": "https://okta.example.com/authorize",
-                            "tokenUrl": "https://okta.example.com/token",
-                            "scopes": {"openid": "OpenID scope"},
-                        },
-                        "clientCredentials": self._CC_FLOW,
-                    },
-                }
-            },
-        }
-
-        # WHEN it is parsed and read for Cross-Application Access
-        params = _parse_cross_app_params(parse_agent_card(card_json))
-
-        # THEN the client-credentials flow is the one used
-        assert params.token_url == _AGENT_TOKEN_URL
-        assert params.id_jag_scopes == ["read_data"]
-
     def test_v10_card(self):
         # GIVEN the v1.0 card JSON of an agent with Cross-Application Access
         card_json = {

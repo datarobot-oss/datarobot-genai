@@ -19,6 +19,7 @@
 # a2a-sdk 1.x, with the request handler split out of create_a2a_server.
 
 import logging
+from collections.abc import AsyncGenerator
 
 import httpx
 from a2a.compat.v0_3.conversions import to_core_agent_card
@@ -26,6 +27,8 @@ from a2a.compat.v0_3.types import AgentCapabilities
 from a2a.compat.v0_3.types import AgentCard
 from a2a.compat.v0_3.types import AgentSkill
 from a2a.compat.v0_3.types import SecurityScheme
+from a2a.server.context import ServerCallContext
+from a2a.server.events import Event
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.routes import create_agent_card_routes
 from a2a.server.routes import create_jsonrpc_routes
@@ -33,6 +36,8 @@ from a2a.server.tasks import BasePushNotificationSender
 from a2a.server.tasks import InMemoryPushNotificationConfigStore
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCard as CoreAgentCard
+from a2a.types import Message
+from a2a.types import SendMessageRequest
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
 from nat.builder.function import Function
 from nat.builder.workflow import Workflow
@@ -45,6 +50,33 @@ from datarobot_genai.dragent.a2a.server.agent_executor_adapter import NATWorkflo
 from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
 
 logger = logging.getLogger(__name__)
+
+
+class _MessageEndsStreamRequestHandler(DefaultRequestHandler):
+    """Ends ``message/stream`` at the agent's final message.
+
+    a2a-sdk 0.3 closed the stream on a final ``Message``, so a workflow that failed ended it with
+    the error message and nothing after. a2a-sdk 1.x raises the executor's error once more when
+    it reads on, and the v0.3 adapter turns that into a JSON-RPC error event after the message.
+    The error is already delivered as the message and logged by the executor, so it is read off
+    and dropped here. ``message/send`` is untouched: it still answers with the error.
+    """
+
+    async def on_message_send_stream(
+        self,
+        params: SendMessageRequest,
+        context: ServerCallContext,
+    ) -> AsyncGenerator[Event]:
+        stream = super().on_message_send_stream(params, context)
+        async for event in stream:
+            yield event
+            if isinstance(event, Message):
+                try:
+                    async for _ in stream:
+                        pass
+                except Exception:
+                    logger.debug("Dropped an error raised after the final message", exc_info=True)
+                return
 
 
 class A2AFrontEndPluginWorker:
@@ -303,7 +335,7 @@ class A2AFrontEndPluginWorker:
             config_store=push_config_store,
         )
 
-        return DefaultRequestHandler(
+        return _MessageEndsStreamRequestHandler(
             agent_executor=agent_executor,
             task_store=InMemoryTaskStore(),
             agent_card=agent_card,

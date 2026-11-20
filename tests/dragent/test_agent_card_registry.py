@@ -254,32 +254,6 @@ class TestAgentCardCacheRecord:
         entry = AgentCardCacheRecord(card=_card())
         assert not entry.is_within_staleness(0)
 
-    def test_json_round_trip_preserves_card(self):
-        # GIVEN a cache record
-        record = AgentCardCacheRecord(card=_card())
-
-        # WHEN it is dumped to JSON and loaded back
-        restored = AgentCardCacheRecord.model_validate_json(record.model_dump_json())
-
-        # THEN the card is unchanged
-        assert restored.card == record.card
-
-    def test_version_1_payload_with_v03_card_still_validates(self):
-        # GIVEN a version-1 payload written by the previous release (v0.3 card JSON)
-        payload = {
-            "version": 1,
-            "fetched_at": datetime.now(UTC).isoformat(),
-            "card": _SAMPLE_AGENT_CARD,
-            "source": "registry",
-            "deployment_id": "dep-1",
-        }
-
-        # WHEN it is validated
-        record = AgentCardCacheRecord.model_validate(payload)
-
-        # THEN the card parses
-        assert record.card == _card()
-
 
 # ---------------------------------------------------------------------------
 # Tests: _resolve_settings

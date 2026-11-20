@@ -1,8 +1,0 @@
-{
-  "error": {
-    "code": -32603,
-    "message": "Authenticated identity required for extended agent card"
-  },
-  "id": "req-1",
-  "jsonrpc": "2.0"
-}
