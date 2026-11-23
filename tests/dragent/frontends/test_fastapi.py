@@ -25,7 +25,6 @@ from unittest.mock import patch
 import pytest
 from a2a.types import InvalidParamsError
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
-from a2a.utils.errors import ServerError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nat.builder.workflow_builder import WorkflowBuilder
@@ -1177,11 +1176,9 @@ class TestPerUserCompatibleAgentExecutor:
         )
         with (
             patch(AUTH_HANDLER_PATH, return_value=None),
-            pytest.raises(ServerError) as exc_info,
+            pytest.raises(InvalidParamsError),
         ):
             await executor.execute(context, MagicMock())
-        assert isinstance(exc_info.value.error, InvalidParamsError)
-        assert exc_info.value.error.code == -32602
 
         session_manager._context_state.user_id.set.assert_not_called()
         patch_super_execute.assert_not_awaited()
@@ -1190,7 +1187,7 @@ class TestPerUserCompatibleAgentExecutor:
         self, executor, session_manager, patch_super_execute
     ):
         """ContextVar for _a2a_headers must be cleaned up even when identity
-        resolution raises ServerError (no ContextVar leak).
+        resolution raises InvalidParamsError (no ContextVar leak).
         """
         from datarobot_genai.dragent.frontends.session import _a2a_headers
 
@@ -1203,7 +1200,7 @@ class TestPerUserCompatibleAgentExecutor:
 
         with (
             patch(AUTH_HANDLER_PATH, return_value=None),
-            pytest.raises(ServerError),
+            pytest.raises(InvalidParamsError),
         ):
             await executor.execute(context, MagicMock())
 

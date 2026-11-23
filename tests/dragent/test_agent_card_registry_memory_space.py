@@ -22,8 +22,8 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
-from a2a.types import AgentCard
 
+from datarobot_genai.dragent.a2a.cards import parse_agent_card
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryConfig
 from datarobot_genai.dragent.agent_card_registry_backends import AgentCardCacheRecord
 from datarobot_genai.dragent.agent_card_registry_backends import LayeredAgentCardCacheBackend
@@ -34,18 +34,17 @@ from datarobot_genai.dragent.agent_card_registry_backends import build_cache_rec
 from datarobot_genai.dragent.agent_card_registry_backends import create_agent_card_cache_backend
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
 
-_SAMPLE_AGENT_CARD = AgentCard.model_validate(
-    {
-        "name": "MemorySpace Agent",
-        "description": "Cached in MemorySpace",
-        "url": "https://agent.example.com/a2a/",
-        "version": "1.0.0",
-        "skills": [],
-        "defaultInputModes": ["text"],
-        "defaultOutputModes": ["text"],
-        "capabilities": {"streaming": False},
-    }
-)
+_SAMPLE_AGENT_CARD_JSON = {
+    "name": "MemorySpace Agent",
+    "description": "Cached in MemorySpace",
+    "url": "https://agent.example.com/a2a/",
+    "version": "1.0.0",
+    "skills": [],
+    "defaultInputModes": ["text"],
+    "defaultOutputModes": ["text"],
+    "capabilities": {"streaming": False},
+}
+_SAMPLE_AGENT_CARD = parse_agent_card(_SAMPLE_AGENT_CARD_JSON)
 
 _IDS = RegistryIds(deployment_id="dep-1", external_id="ext-1")
 
@@ -268,7 +267,7 @@ class TestAgentCardCacheRecordCompatibility:
             {
                 "version": 1,
                 "fetched_at": datetime.now(UTC).isoformat(),
-                "card": _SAMPLE_AGENT_CARD.model_dump(mode="json", by_alias=True),
+                "card": _SAMPLE_AGENT_CARD_JSON,
                 "source": "registry",
                 "deployment_id": "dep-1",
                 "external_id": "ext-1",

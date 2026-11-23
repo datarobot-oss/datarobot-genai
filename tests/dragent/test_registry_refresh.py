@@ -21,6 +21,7 @@ from unittest.mock import patch
 import pytest
 from nat.data_models.config import Config
 
+from datarobot_genai.dragent.a2a.cards import parse_agent_card
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistry
 from datarobot_genai.dragent.agent_card_registry import AgentCardRegistryError
 from datarobot_genai.dragent.agent_card_registry import ParsedRegistryCards
@@ -58,9 +59,7 @@ _SAMPLE_AGENT_CARD = {
 
 
 def _card(**overrides):
-    from a2a.types import AgentCard
-
-    return AgentCard.model_validate({**_SAMPLE_AGENT_CARD, **overrides})
+    return parse_agent_card({**_SAMPLE_AGENT_CARD, **overrides})
 
 
 def _parsed(cards: dict) -> ParsedRegistryCards:

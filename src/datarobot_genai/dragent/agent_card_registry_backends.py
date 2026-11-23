@@ -31,6 +31,7 @@ from a2a.types import AgentCard
 from pydantic import BaseModel
 from pydantic import Field
 
+from datarobot_genai.dragent.a2a.cards import AgentCardModel
 from datarobot_genai.dragent.memory_space_cache import MemorySpaceKVCache
 from datarobot_genai.dragent.memory_space_cache import is_enclave_l2_workload
 from datarobot_genai.dragent.memory_space_cache import try_resolve_memory_space_id
@@ -63,7 +64,7 @@ class AgentCardCacheRecord(BaseModel):
 
     version: int = 1
     fetched_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    card: AgentCard
+    card: AgentCardModel
     source: str = "registry"
     deployment_id: str | None = None
     external_id: str | None = None

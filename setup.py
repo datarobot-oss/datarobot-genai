@@ -85,7 +85,7 @@ llamaindex = core + [
 dragent = core + [
     "datarobot[application-utils]>=3.19.0,<4.0.0",
     "nvidia-nat==1.9.0",
-    "a2a-sdk[http-server]>=0.3.20,<1.0.0",  # pinned below 1.0 until dragent is ported to the 1.x API
+    "a2a-sdk[http-server]>=1.3.0,<2.0.0",
     "nvidia-nat-opentelemetry==1.9.0",
     "nvidia-nat-langchain[litellm]==1.9.0",  # NAT built-in agents require this; [litellm] moved to extra in 1.9
     "nvidia-nat-mcp==1.9.0",

@@ -19,7 +19,9 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
-from a2a.types import AgentSkill
+from a2a.compat.v0_3.types import AgentSkill
+from starlette.responses import JSONResponse
+from starlette.responses import Response
 
 from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
@@ -41,6 +43,7 @@ from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_GRANT_TYPE_URI
 from datarobot_genai.dragent.frontends.a2a import TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE
 from datarobot_genai.dragent.frontends.a2a import DRAgentA2AStarletteApplication
 from datarobot_genai.dragent.frontends.a2a import _make_public_card_modifier
+from datarobot_genai.dragent.frontends.a2a import _without_null_error_data
 from datarobot_genai.dragent.frontends.a2a import create_agent_card
 from datarobot_genai.dragent.frontends.a2a import get_a2a_endpoint_url
 from datarobot_genai.dragent.frontends.a2a import redact_agent_card
@@ -818,3 +821,172 @@ class TestGetA2aEndpointUrlMountPath:
         }
         with patch.dict(os.environ, env, clear=True):
             assert get_a2a_endpoint_url("localhost", 8000, mount_path) == expected
+
+
+class TestJsonRpcPayloadLimit:
+    async def test_oversized_request_is_rejected_before_the_handler(self, a2a_frontend_config):
+        """GIVEN a server with a small max_content_length and a spy handler
+        WHEN a JSON-RPC request larger than the limit is posted
+        THEN it answers -32600 "Payload too large" and the handler is never reached.
+        """
+        from starlette.testclient import TestClient
+
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+        handler = MagicMock()
+        server = DRAgentA2AStarletteApplication(
+            agent_card=card, http_handler=handler, max_content_length=10
+        )
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": {}})
+
+        response = TestClient(server.build()).post(
+            "/", content=body, headers={"content-type": "application/json"}
+        )
+
+        error = response.json()["error"]
+        assert error["code"] == -32600
+        assert error["message"] == "Payload too large"
+        assert handler.mock_calls == []
+
+    async def test_oversized_chunked_request_is_rejected(self, a2a_frontend_config):
+        """GIVEN a server with a small max_content_length
+        WHEN a chunked request with no Content-Length exceeds the limit
+        THEN it answers -32600 "Payload too large" and the handler is never reached.
+        """
+        from starlette.testclient import TestClient
+
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+        handler = MagicMock()
+        server = DRAgentA2AStarletteApplication(
+            agent_card=card, http_handler=handler, max_content_length=10
+        )
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": {}})
+
+        def chunks():
+            for start in range(0, len(body), 8):
+                yield body[start : start + 8].encode()
+
+        response = TestClient(server.build()).post(
+            "/", content=chunks(), headers={"content-type": "application/json"}
+        )
+
+        assert "content-length" not in response.request.headers
+        error = response.json()["error"]
+        assert error["code"] == -32600
+        assert error["message"] == "Payload too large"
+        assert handler.mock_calls == []
+
+    async def test_malformed_content_length_is_ignored(self, a2a_frontend_config):
+        """GIVEN a server with a payload limit
+        WHEN a request carries a Content-Length header that is not a number
+        THEN the header is ignored and the request is answered, not failed with a 500.
+
+        Driven over raw ASGI, because HTTP clients refuse to send such a header.
+        """
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+        server = DRAgentA2AStarletteApplication(agent_card=card, http_handler=MagicMock())
+        app = server.build()
+        body = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "no/such/method"}).encode()
+        messages = [{"type": "http.request", "body": body, "more_body": False}]
+        sent: list[dict] = []
+
+        async def receive():
+            return messages.pop(0) if messages else {"type": "http.disconnect"}
+
+        async def send(message):
+            sent.append(message)
+
+        await app(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/",
+                "raw_path": b"/",
+                "query_string": b"",
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", b"not-a-number"),
+                ],
+                "scheme": "http",
+                "server": ("testserver", 80),
+                "client": ("testclient", 50000),
+                "root_path": "",
+                "http_version": "1.1",
+            },
+            receive,
+            send,
+        )
+
+        assert sent[0]["status"] == 200
+        payload = json.loads(b"".join(m.get("body", b"") for m in sent[1:]))
+        assert payload["error"]["code"] == -32601
+
+    async def test_request_within_the_limit_still_reaches_the_sdk(self, a2a_frontend_config):
+        """GIVEN a server with a limit larger than the request
+        WHEN a chunked request is posted
+        THEN the body is passed on intact, so the SDK answers it (here: unknown method).
+        """
+        from starlette.testclient import TestClient
+
+        card = await create_agent_card(a2a_frontend_config, cross_app_access=None, skills=[])
+        server = DRAgentA2AStarletteApplication(
+            agent_card=card, http_handler=MagicMock(), max_content_length=1024
+        )
+        body = json.dumps({"jsonrpc": "2.0", "id": 7, "method": "no/such/method"})
+
+        response = TestClient(server.build()).post(
+            "/",
+            content=(part.encode() for part in (body[:10], body[10:])),
+            headers={"content-type": "application/json"},
+        )
+
+        payload = response.json()
+        assert payload["id"] == 7
+        assert payload["error"]["code"] == -32601
+
+
+class TestWithoutNullErrorData:
+    def test_drops_null_data_from_an_error(self):
+        # GIVEN a JSON-RPC error response the SDK wrote with ``"data": null``
+        error = {"code": -32603, "message": "Internal error", "data": None}
+        response = JSONResponse({"jsonrpc": "2.0", "id": "req-1", "error": error}, status_code=200)
+
+        # WHEN it is cleaned
+        cleaned = _without_null_error_data(response)
+
+        # THEN the key is gone and everything else is as it was, as in a2a-sdk 0.3
+        assert json.loads(cleaned.body) == {
+            "jsonrpc": "2.0",
+            "id": "req-1",
+            "error": {"code": -32603, "message": "Internal error"},
+        }
+        assert cleaned.status_code == 200
+
+    def test_keeps_data_that_carries_a_value(self):
+        # GIVEN an error that carries real data
+        response = JSONResponse({"error": {"code": -32602, "message": "Bad", "data": {"a": 1}}})
+
+        # WHEN it is cleaned
+        cleaned = _without_null_error_data(response)
+
+        # THEN it is returned as it is
+        assert cleaned is response
+
+    def test_leaves_a_success_response_alone(self):
+        # GIVEN a successful JSON-RPC response whose result happens to hold a null ``data``
+        response = JSONResponse({"jsonrpc": "2.0", "id": "req-1", "result": {"data": None}})
+
+        # WHEN it is cleaned
+        cleaned = _without_null_error_data(response)
+
+        # THEN it is returned as it is
+        assert cleaned is response
+
+    def test_leaves_a_response_that_is_not_json_alone(self):
+        # GIVEN a plain-text response
+        response = Response("not json", media_type="text/plain")
+
+        # WHEN it is cleaned
+        cleaned = _without_null_error_data(response)
+
+        # THEN it is returned as it is
+        assert cleaned is response

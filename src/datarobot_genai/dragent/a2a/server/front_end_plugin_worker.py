@@ -15,31 +15,68 @@
 # Portions derived from NVIDIA NeMo Agent Toolkit (nvidia-nat-a2a 1.9.0).
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-# Modified by DataRobot: import paths, formatting, docstrings and type annotations.
+# Modified by DataRobot: import paths, formatting, docstrings and type annotations; ported to
+# a2a-sdk 1.x, with the request handler split out of create_a2a_server.
 
 import logging
+from collections.abc import AsyncGenerator
 
 import httpx
-from a2a.server.apps import A2AStarletteApplication
+from a2a.compat.v0_3.conversions import to_core_agent_card
+from a2a.compat.v0_3.types import AgentCapabilities
+from a2a.compat.v0_3.types import AgentCard
+from a2a.compat.v0_3.types import AgentSkill
+from a2a.compat.v0_3.types import SecurityScheme
+from a2a.server.context import ServerCallContext
+from a2a.server.events import Event
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import create_agent_card_routes
+from a2a.server.routes import create_jsonrpc_routes
 from a2a.server.tasks import BasePushNotificationSender
 from a2a.server.tasks import InMemoryPushNotificationConfigStore
 from a2a.server.tasks import InMemoryTaskStore
-from a2a.types import AgentCapabilities
-from a2a.types import AgentCard
-from a2a.types import AgentSkill
-from a2a.types import SecurityScheme
+from a2a.types import AgentCard as CoreAgentCard
+from a2a.types import Message
+from a2a.types import SendMessageRequest
 from nat.authentication.oauth2.oauth2_resource_server_config import OAuth2ResourceServerConfig
 from nat.builder.function import Function
 from nat.builder.workflow import Workflow
 from nat.builder.workflow_builder import WorkflowBuilder
 from nat.data_models.config import Config
 from nat.runtime.session import SessionManager
+from starlette.applications import Starlette
 
 from datarobot_genai.dragent.a2a.server.agent_executor_adapter import NATWorkflowAgentExecutor
 from datarobot_genai.dragent.a2a.server.front_end_config import A2AFrontEndConfig
 
 logger = logging.getLogger(__name__)
+
+
+class _MessageEndsStreamRequestHandler(DefaultRequestHandler):
+    """Ends ``message/stream`` at the agent's final message.
+
+    a2a-sdk 0.3 closed the stream on a final ``Message``, so a workflow that failed ended it with
+    the error message and nothing after. a2a-sdk 1.x raises the executor's error once more when
+    it reads on, and the v0.3 adapter turns that into a JSON-RPC error event after the message.
+    The error is already delivered as the message and logged by the executor, so it is read off
+    and dropped here. ``message/send`` is untouched: it still answers with the error.
+    """
+
+    async def on_message_send_stream(
+        self,
+        params: SendMessageRequest,
+        context: ServerCallContext,
+    ) -> AsyncGenerator[Event]:
+        stream = super().on_message_send_stream(params, context)
+        async for event in stream:
+            yield event
+            if isinstance(event, Message):
+                try:
+                    async for _ in stream:
+                        pass
+                except Exception:
+                    logger.debug("Dropped an error raised after the final message", exc_info=True)
+                return
 
 
 class A2AFrontEndPluginWorker:
@@ -92,9 +129,9 @@ class A2AFrontEndPluginWorker:
         -------
             Tuple of (security_schemes dict, security requirements list)
         """
-        from a2a.types import AuthorizationCodeOAuthFlow
-        from a2a.types import OAuth2SecurityScheme
-        from a2a.types import OAuthFlows
+        from a2a.compat.v0_3.types import AuthorizationCodeOAuthFlow
+        from a2a.compat.v0_3.types import OAuth2SecurityScheme
+        from a2a.compat.v0_3.types import OAuthFlows
 
         # Resolve OAuth2 endpoints from configuration
         auth_url, token_url = await self._resolve_oauth_endpoints(server_auth_config)
@@ -109,9 +146,9 @@ class A2AFrontEndPluginWorker:
                     type="oauth2",
                     description="OAuth 2.0 authentication required to access this agent",
                     flows=OAuthFlows(
-                        authorizationCode=AuthorizationCodeOAuthFlow(
-                            authorizationUrl=auth_url,
-                            tokenUrl=token_url,
+                        authorization_code=AuthorizationCodeOAuthFlow(
+                            authorization_url=auth_url,
+                            token_url=token_url,
                             scopes=scope_descriptions,
                         )
                     ),
@@ -277,20 +314,12 @@ class A2AFrontEndPluginWorker:
 
         return NATWorkflowAgentExecutor(session_manager)
 
-    def create_a2a_server(
+    def create_request_handler(
         self,
-        agent_card: AgentCard,
+        agent_card: CoreAgentCard,
         agent_executor: NATWorkflowAgentExecutor,
-    ) -> A2AStarletteApplication:
-        """Create A2A server with the agent executor.
-
-        Args:
-            agent_card: The agent card describing the agent
-            agent_executor: The executor that handles task processing
-
-        Returns
-        -------
-            Configured A2A Starlette application
+    ) -> DefaultRequestHandler:
+        """Create the handler that runs A2A requests through the agent executor.
 
         Note:
             The httpx client is stored in self._httpx_client for lifecycle management.
@@ -306,18 +335,36 @@ class A2AFrontEndPluginWorker:
             config_store=push_config_store,
         )
 
-        # Create request handler
-        request_handler = DefaultRequestHandler(
+        return _MessageEndsStreamRequestHandler(
             agent_executor=agent_executor,
             task_store=InMemoryTaskStore(),
+            agent_card=agent_card,
             push_config_store=push_config_store,
             push_sender=push_sender,
         )
 
-        # Create A2A server
-        server = A2AStarletteApplication(
-            agent_card=agent_card,
-            http_handler=request_handler,
+    def create_a2a_server(
+        self,
+        agent_card: AgentCard,
+        agent_executor: NATWorkflowAgentExecutor,
+    ) -> Starlette:
+        """Create A2A server with the agent executor.
+
+        Args:
+            agent_card: The agent card describing the agent
+            agent_executor: The executor that handles task processing
+
+        Returns
+        -------
+            Configured A2A Starlette application
+        """
+        core_card = to_core_agent_card(agent_card)
+        request_handler = self.create_request_handler(core_card, agent_executor)
+        server = Starlette(
+            routes=[
+                *create_agent_card_routes(core_card),
+                *create_jsonrpc_routes(request_handler, rpc_url="/", enable_v0_3_compat=True),
+            ]
         )
 
         logger.info("Created A2A server with DefaultRequestHandler")
