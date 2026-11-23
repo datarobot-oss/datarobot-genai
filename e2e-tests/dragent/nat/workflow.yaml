@@ -52,7 +52,8 @@ functions:
     tool_names:
       - planner
       - writer
-      - mcp_tools
+      # TEMP (ALIFE-2018): restore with mcp_tools below once an MCP deployment exists.
+      # - mcp_tools
       - generate_objectid
     system_prompt: |
       Call planner, then writer. Return writer's output.
@@ -64,9 +65,11 @@ llms:
     _type: datarobot-llm-component
     temperature: 0
 
-function_groups:
-  mcp_tools:
-    _type: datarobot_mcp_client
+# TEMP (ALIFE-2018): with no MCP configured the client falls back to localhost:8080/mcp,
+# which is this server, and the 404 trips the duplicate-span check.
+# function_groups:
+#   mcp_tools:
+#     _type: datarobot_mcp_client
 
 authentication:
   datarobot_mcp_auth:

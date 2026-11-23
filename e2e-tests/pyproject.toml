@@ -59,6 +59,7 @@ base_agent = "dragent.base.register"
 [tool.uv]
 package = true
 exclude-dependencies = [
+    "aioboto3",                 # caps boto3 <1.40.62 via aiobotocore; CVE-safe litellm needs boto3>=1.43
     "annoy",                    # nemoguardrails ANN index; sdist -march=native build SIGILLs on non-AVX-512 runners (BUZZOK-31265)
     "llama-index-llms-azure-openai",
     "llama-index-llms-bedrock",
@@ -109,7 +110,7 @@ constraint-dependencies = [
     "langgraph-sdk>=0.4.6",
     "langsmith>=0.8.18",
     "mem0ai>=2.0.18",
-    "mistune>=3.3.3",
+    "mistune>=3.3.4",
     "multidict>=6.9.1",
     "nbconvert>=7.17.2",
     "nltk>=3.10.4",

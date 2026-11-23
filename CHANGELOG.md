@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.34.1 - 2026-11-23
+- Drop the `[async]` extra from `llama-index-llms-bedrock-converse` and require `>=0.15.3`. The
+  extra pulled in `aioboto3`, which pins `aiobotocore` and caps `boto3` below 1.40.62. Every
+  `litellm` release at or above the CVE floor (`>=1.100.4`) requires `boto3>=1.43.1`, so the two
+  could not resolve together. `aioboto3`, `aiobotocore` and `aioitertools` leave the lock.
+- Async Bedrock Converse calls (the moderations guards) keep working: from 0.15.3,
+  `llama-index-llms-bedrock-converse` runs them on a worker thread when `aioboto3` is absent.
+- Exclude `aioboto3` in `[tool.uv]` for the root and `e2e-tests` so nothing pulls it back in.
+
 ## 0.34.0 - 2026-11-20
 - `dragent`: A2A now runs on `a2a-sdk` 1.x. Agents still publish a v0.3 agent card and answer
   v0.3 callers. The `a2a_client` helper functions `get_task`, `cancel_task`, `send_message` and
