@@ -107,6 +107,33 @@ class TestAssembleTask:
         assert task.status.message.parts[0].text == "done"
         assert [m.parts[0].text for m in task.history] == ["done"]
 
+    def test_status_update_merges_its_metadata_into_the_task(self) -> None:
+        # GIVEN a task with metadata, then a status update that carries metadata of its own
+        first = _task_event()
+        first.task.metadata.update({"source": "agent", "step": "start"})
+        update = _status_event(TaskState.TASK_STATE_WORKING)
+        update.status_update.metadata.update({"step": "planning"})
+
+        # WHEN assembling
+        task = assemble_task([first, update])
+
+        # THEN the update's metadata is merged in, overriding shared keys, as a2a-sdk 0.3's
+        # client merged it
+        assert task is not None
+        assert dict(task.metadata) == {"source": "agent", "step": "planning"}
+
+    def test_status_update_without_metadata_keeps_the_task_metadata(self) -> None:
+        # GIVEN a task with metadata, then a status update without any
+        first = _task_event()
+        first.task.metadata.update({"source": "agent"})
+
+        # WHEN assembling
+        task = assemble_task([first, _status_event(TaskState.TASK_STATE_COMPLETED)])
+
+        # THEN the task's metadata is untouched
+        assert task is not None
+        assert dict(task.metadata) == {"source": "agent"}
+
     def test_artifact_update_with_append_extends_existing_artifact(self) -> None:
         # GIVEN an artifact followed by an appending update for the same id
         events = [

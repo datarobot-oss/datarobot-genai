@@ -16,12 +16,14 @@ import copy
 from typing import Any
 
 import pytest
+from a2a.client import ClientFactory
 from a2a.types import AgentCard
 from a2a.types import AgentInterface
 from google.protobuf.json_format import MessageToDict
 from pydantic import BaseModel
 
 from datarobot_genai.dragent.a2a.cards import AgentCardModel
+from datarobot_genai.dragent.a2a.cards import best_interface
 from datarobot_genai.dragent.a2a.cards import card_rpc_url
 from datarobot_genai.dragent.a2a.cards import parse_agent_card
 
@@ -148,6 +150,42 @@ class TestCardRpcUrl:
         # WHEN asking for the RPC url
         # THEN the JSON-RPC interface wins
         assert card_rpc_url(card) == "https://rpc.example.com"
+
+
+class TestBestInterface:
+    @pytest.mark.parametrize(
+        "interfaces",
+        [
+            pytest.param([("JSONRPC", "0.3"), ("JSONRPC", "1.0")], id="v1.0-over-v0.3"),
+            pytest.param([("JSONRPC", "0.3.0"), ("JSONRPC", "1.0.0")], id="patch-ignored"),
+            pytest.param([("JSONRPC", "1.1"), ("JSONRPC", "2.0"), ("JSONRPC", "0.3")], id="newer"),
+            pytest.param([("JSONRPC", "0.2"), ("JSONRPC", "")], id="no-version-last"),
+            pytest.param([("JSONRPC", "0.2")], id="too-old"),
+            pytest.param([("JSONRPC", "1")], id="major-only"),
+            pytest.param([("JSONRPC", "v1.0"), ("JSONRPC", "0.3")], id="v-prefix"),
+            pytest.param([("JSONRPC", "1.0rc1"), ("JSONRPC", "0.3")], id="pre-release"),
+            pytest.param([("GRPC", "1.0"), ("JSONRPC", "0.3")], id="other-binding"),
+            pytest.param([("HTTP+JSON", "1.0")], id="no-jsonrpc"),
+            pytest.param([], id="empty"),
+        ],
+    )
+    def test_matches_the_sdk_client(self, interfaces: list[tuple[str, str]]) -> None:
+        # GIVEN a card's interfaces
+        candidates = [
+            AgentInterface(
+                url=f"https://agent-{i}.example.com",
+                protocol_binding=binding,
+                protocol_version=version,
+            )
+            for i, (binding, version) in enumerate(interfaces)
+        ]
+
+        # WHEN dragent and the SDK's client each pick the JSON-RPC interface
+        ours = best_interface(candidates, "JSONRPC")
+        sdk = ClientFactory._find_best_interface(candidates, protocol_bindings=["JSONRPC"])
+
+        # THEN they pick the same one, so ``card_rpc_url`` is the URL the client calls
+        assert (ours.url if ours else None) == (sdk.url if sdk else None)
 
 
 class _Holder(BaseModel):

@@ -388,6 +388,8 @@ def apply_event(task: Task | None, event: StreamResponse) -> Task | None:
         else:
             if update.status.HasField("message"):
                 task.history.append(update.status.message)
+            if update.HasField("metadata"):
+                task.metadata.update(update.metadata)
             task.status.CopyFrom(update.status)
     return task
 

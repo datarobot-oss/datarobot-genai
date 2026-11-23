@@ -20,15 +20,19 @@ registry and its cache, and the Okta cross-app provider.
 
 import copy
 import logging
+import re
 from collections.abc import Mapping
+from collections.abc import Sequence
 from typing import Annotated
 from typing import Any
 
 import httpx
-from a2a.client import ClientFactory
 from a2a.client.card_resolver import parse_agent_card as _sdk_parse_agent_card
 from a2a.types import AgentCard
+from a2a.types import AgentInterface
 from a2a.utils.constants import AGENT_CARD_WELL_KNOWN_PATH
+from a2a.utils.constants import PROTOCOL_VERSION_0_3
+from a2a.utils.constants import PROTOCOL_VERSION_1_0
 from a2a.utils.constants import TransportProtocol
 from google.protobuf.json_format import MessageToDict
 from google.protobuf.json_format import ParseError
@@ -50,12 +54,56 @@ def card_rpc_url(card: AgentCard) -> str:
     (v1.0 first, then the newest supported), so it is the endpoint the client actually
     calls. Falls back to the first interface of any binding, else ``""``.
     """
-    interface = ClientFactory._find_best_interface(
-        list(card.supported_interfaces), protocol_bindings=[JSONRPC]
-    )
+    interface = best_interface(card.supported_interfaces, JSONRPC)
     if interface is not None:
         return interface.url
     return card.supported_interfaces[0].url if card.supported_interfaces else ""
+
+
+# ``major.minor`` of a protocol version; the patch level and any suffix do not matter.
+_MAJOR_MINOR = re.compile(r"\s*[vV]?(\d+)(?:\.(\d+))?")
+
+
+def _major_minor(version: str) -> tuple[int, int] | None:
+    match = _MAJOR_MINOR.match(version)
+    if match is None:
+        return None
+    return int(match[1]), int(match[2] or 0)
+
+
+_V1_0 = _major_minor(PROTOCOL_VERSION_1_0) or (1, 0)
+_V0_3 = _major_minor(PROTOCOL_VERSION_0_3) or (0, 3)
+
+
+def best_interface(
+    interfaces: Sequence[AgentInterface], protocol_binding: str
+) -> AgentInterface | None:
+    """Return the interface the SDK's client calls for ``protocol_binding``, if any.
+
+    The first v1.0 interface wins, then the first newer than v1.0, then the first from v0.3 on,
+    then the first without a version. This follows ``ClientFactory._find_best_interface`` of
+    a2a-sdk 1.x, which is private and so not called here; ``test_cards`` checks they agree.
+    """
+    newer_than_v1_0: AgentInterface | None = None
+    from_v0_3: AgentInterface | None = None
+    without_version: AgentInterface | None = None
+    for interface in interfaces:
+        if interface.protocol_binding != protocol_binding:
+            continue
+        if not interface.protocol_version:
+            if without_version is None:
+                without_version = interface
+            continue
+        version = _major_minor(interface.protocol_version)
+        if version is None:
+            continue
+        if version == _V1_0:
+            return interface
+        if newer_than_v1_0 is None and version > _V1_0:
+            newer_than_v1_0 = interface
+        if from_v0_3 is None and version >= _V0_3:
+            from_v0_3 = interface
+    return newer_than_v1_0 or from_v0_3 or without_version
 
 
 def _keep_one_oauth_flow(card_data: dict[str, Any]) -> None:
