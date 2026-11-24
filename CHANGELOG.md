@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.34.2 - 2026-11-24
+- Raise the minimum `litellm` version from `>=1.96.2,<2.0.0` to `>=1.100.4,<2.0.0`.
+- Raise the minimum `opentelemetry-api` version from `>=1.45.1,<2.0.0` to `>=1.45.2,<2.0.0`.
+- Raise the declared requirement `langgraph>=1.0.0,<2.0.0` to `langgraph>=1.2.14,<2.0.0` to match a
+  CVE fix this repo already enforces.
+- Raise the declared requirement `litellm>=1.96.2,<2.0.0` to `litellm>=1.100.4,<2.0.0` to match a
+  CVE fix this repo already enforces.
+- Raise the declared requirement `opentelemetry-api>=1.45.1,<2.0.0` to
+  `opentelemetry-api>=1.45.2,<2.0.0` to match a CVE fix this repo already enforces.
+- Raise the declared requirement `pypdf>=6.21.2` to `pypdf>=6.21.4` to match a CVE fix this repo
+  already enforces.
+- Raise the declared requirement `pypdf>=6.21.2,<7.0.0` to `pypdf>=6.21.4,<7.0.0` to match a CVE fix
+  this repo already enforces.
+- Raise the `litellm` override from `>=1.96.2,<2.0.0` to `>=1.100.4,<2.0.0` to meet a CVE fix.
+- Raise the `opentelemetry-api` override from `>=1.45.1,<2.0.0` to `>=1.45.2,<2.0.0` to meet a CVE
+  fix.
+
 ## 0.34.1 - 2026-11-23
 - Drop the `[async]` extra from `llama-index-llms-bedrock-converse` and require `>=0.15.3`. The
   extra pulled in `aioboto3`, which pins `aiobotocore` and caps `boto3` below 1.40.62. Every

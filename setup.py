@@ -51,7 +51,7 @@ crewai = core + [
     "anthropic~=0.71.0,<1.0.0",  # Needed for integration with anthropic endpoints
     "azure-ai-inference>=1.0.0b9,<2.0.0",  # Needed for integration with azure endpoints
     "crewai[litellm]>=1.15.21,<2.0.0",
-    "litellm>=1.96.2,<2.0.0",
+    "litellm>=1.100.4,<2.0.0",
     "crewai-tools[mcp]>=1.15.21,<2.0.0",
     "mcpadapt>=0.1.9",  # imported directly by crewai/mcp.py
     "nvidia-nat-crewai==1.9.0",
@@ -60,8 +60,8 @@ crewai = core + [
 
 langgraph = core + [
     "langchain-mcp-adapters>=0.1.12,<0.2.0",
-    "langgraph>=1.0.0,<2.0.0",
-    "litellm>=1.96.2,<2.0.0",
+    "langgraph>=1.2.14,<2.0.0",
+    "litellm>=1.100.4,<2.0.0",
     "nvidia-nat-langchain[litellm]==1.9.0",  # [litellm] pulls langchain-litellm (moved from required to extra in 1.9)
     "opentelemetry-instrumentation-langchain>=0.62.1,<1.0.0",
 ]
@@ -70,7 +70,7 @@ llamaindex = core + [
     "llama-index-core>=0.14.0,<0.15.0",
     "llama-index-llms-langchain>=0.8.0,<1.0.0",
     "llama-index-llms-litellm>=0.4.1,<0.7.0",  # Sync nat dependency if possible too
-    "litellm>=1.96.2,<2.0.0",
+    "litellm>=1.100.4,<2.0.0",
     "llama-index-tools-mcp>=0.1.0,<0.5.0",
     "nvidia-nat-llama-index==1.9.0",
     "opentelemetry-instrumentation-llamaindex>=0.62.1,<1.0.0",
@@ -117,7 +117,7 @@ drtools =  drmcputils + [
     "httpx>=0.28.1,<1.0.0",
     "tavily-python>=0.7.20,<1.0.0",
     "perplexityai>=0.27,<1.0",
-    "pypdf>=6.21.2,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
+    "pypdf>=6.21.4,<7.0.0",  # CVE-2026-40260 fixed in 6.10.0; GHSA-jj6c-8h6c-hppx in 6.10.1
     "polars>=1.0.0,<2.0.0",
     # Required indirectly by polars->pandas conversion.
     "pyarrow>=23.0.1,<24.0.0",  # CVE-2026-25087 fixed in 23.0.1
@@ -127,7 +127,7 @@ drtools =  drmcputils + [
     "aiohttp>=3.14.4,<4.0.0",  # CVE-2025-69229 & CVE-2025-69230 fixed in 3.13.3
     # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
     # drmcpbase metrics bootstrap) import these at module level.
-    "opentelemetry-api>=1.45.1,<2.0.0",
+    "opentelemetry-api>=1.45.2,<2.0.0",
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
@@ -135,7 +135,7 @@ drtools =  drmcputils + [
 # eval is standalone set of dependencies for evaluation utilities only (no core).
 eval_deps = [
     "nemo-evaluator-launcher",
-    "litellm>=1.96.2,<2.0.0",
+    "litellm>=1.100.4,<2.0.0",
     "pyyaml>=6.0",
     # Local embedding model for response_similarity's embedding_cosine metric.
     "fastembed>=0.8.0,<1.0.0",
@@ -150,7 +150,7 @@ drmcpbase = drmcputils + [
     "cachetools>=5.0.0,<8.0.0",
     # OTel API/SDK + OTLP/HTTP exporter: sandbox SLI metrics (drtools observability,
     # drmcpbase metrics bootstrap) import these at module level.
-    "opentelemetry-api>=1.45.1,<2.0.0",
+    "opentelemetry-api>=1.45.2,<2.0.0",
     "opentelemetry-sdk>=1.22.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.22.0,<2.0.0",
 ]
@@ -167,7 +167,7 @@ drmcp = drmcpbase + drtools + [
     "datarobot-asgi-middleware>=0.2.0,<1.0.0",  # not imported in drmcp; used when running server in DataRobot ASGI env
     "python-dotenv>=1.1.0,<2.0.0",
     "pydantic-settings>=2.14.2,<3.0.0",
-    "opentelemetry-api>=1.45.1,<2.0.0",
+    "opentelemetry-api>=1.45.2,<2.0.0",
     "opentelemetry-sdk>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp>=1.43.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.43.0,<2.0.0",

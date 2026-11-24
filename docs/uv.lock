@@ -157,7 +157,7 @@ wheels = [
 
 [[package]]
 name = "datarobot-genai"
-version = "0.34.1"
+version = "0.34.2"
 source = { editable = "../" }
 
 [package.metadata]
@@ -234,11 +234,11 @@ requires-dist = [
     { name = "httpx-retries", marker = "extra == 'langgraph'", specifier = ">=0.4.0" },
     { name = "httpx-retries", marker = "extra == 'llamaindex'", specifier = ">=0.4.0" },
     { name = "langchain-mcp-adapters", marker = "extra == 'langgraph'", specifier = ">=0.1.12,<0.2.0" },
-    { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0,<2.0.0" },
-    { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.96.2,<2.0.0" },
-    { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.96.2,<2.0.0" },
-    { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.96.2,<2.0.0" },
-    { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.96.2,<2.0.0" },
+    { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.2.14,<2.0.0" },
+    { name = "litellm", marker = "extra == 'crewai'", specifier = ">=1.100.4,<2.0.0" },
+    { name = "litellm", marker = "extra == 'eval'", specifier = ">=1.100.4,<2.0.0" },
+    { name = "litellm", marker = "extra == 'langgraph'", specifier = ">=1.100.4,<2.0.0" },
+    { name = "litellm", marker = "extra == 'llamaindex'", specifier = ">=1.100.4,<2.0.0" },
     { name = "llama-index-core", marker = "extra == 'llamaindex'", specifier = ">=0.14.0,<0.15.0" },
     { name = "llama-index-llms-bedrock-converse", marker = "extra == 'core'", specifier = ">=0.15.3" },
     { name = "llama-index-llms-bedrock-converse", marker = "extra == 'crewai'", specifier = ">=0.15.3" },
@@ -269,9 +269,9 @@ requires-dist = [
     { name = "openai", marker = "extra == 'drmcp'", specifier = ">=2.30.0,<3.0.0" },
     { name = "openai", marker = "extra == 'langgraph'", specifier = ">=2.30.0,<3.0.0" },
     { name = "openai", marker = "extra == 'llamaindex'", specifier = ">=2.30.0,<3.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.45.1,<2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drmcpbase'", specifier = ">=1.45.1,<2.0.0" },
-    { name = "opentelemetry-api", marker = "extra == 'drtools'", specifier = ">=1.45.1,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drmcp'", specifier = ">=1.45.2,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drmcpbase'", specifier = ">=1.45.2,<2.0.0" },
+    { name = "opentelemetry-api", marker = "extra == 'drtools'", specifier = ">=1.45.2,<2.0.0" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.22.0,<2.0.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'drmcp'", specifier = ">=1.43.0,<2.0.0" },
@@ -345,8 +345,8 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'drtools'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'langgraph'", specifier = ">=2.15.0,<3.0.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'llamaindex'", specifier = ">=2.15.0,<3.0.0" },
-    { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.21.2,<7.0.0" },
-    { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.21.2,<7.0.0" },
+    { name = "pypdf", marker = "extra == 'drmcp'", specifier = ">=6.21.4,<7.0.0" },
+    { name = "pypdf", marker = "extra == 'drtools'", specifier = ">=6.21.4,<7.0.0" },
     { name = "python-dateutil", marker = "extra == 'drmcp'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dateutil", marker = "extra == 'drtools'", specifier = ">=2.9.0,<3.0.0" },
     { name = "python-dotenv", marker = "extra == 'drmcp'", specifier = ">=1.1.0,<2.0.0" },
@@ -377,7 +377,7 @@ dev = [
     { name = "perplexityai", specifier = ">=0.27" },
     { name = "polars", specifier = ">=1.0.0" },
     { name = "pre-commit" },
-    { name = "pypdf", specifier = ">=6.21.2" },
+    { name = "pypdf", specifier = ">=6.21.4" },
     { name = "pytest" },
     { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "pytest-cov" },
