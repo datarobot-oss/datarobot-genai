@@ -95,7 +95,6 @@ cases:
       # DataRobot deployment with the invalid key.
       LLM_DEPLOYMENT_ID: ""
       LLM_NIM_DEPLOYMENT_ID: ""
-      MCP_DEPLOYMENT_ID: ""
       DATAROBOT_API_TOKEN: "invalid-e2e-api-token"
       WORKFLOW_FILE: workflow-custom-model-external-access-token-moderations.yaml
     tests:
