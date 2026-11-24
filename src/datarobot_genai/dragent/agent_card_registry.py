@@ -98,6 +98,9 @@ _MAX_PAGES = 100
 # Process-local cooldown after a registry transport/HTTP failure (jittered).
 _FAILURE_COOLDOWN_MIN_SECONDS = 30.0
 _FAILURE_COOLDOWN_MAX_SECONDS = 60.0
+# A rejected owner key (deactivated owner, deleted key) stays rejected; retry it rarely.
+_OWNER_KEY_REJECTED_SECONDS = 600
+_KEY_REJECTED_STATUS_CODES = (401, 403)
 
 # Allowed strategies for duplicate external IDs.
 DuplicateStrategy = Literal["first", "last", "error"]
@@ -454,6 +457,8 @@ class AgentCardRegistry:
         self._backend = create_agent_card_cache_backend(self._cache_ttl)
         # Monotonic deadline while the registry is treated as unhealthy.
         self._unhealthy_until: float = 0.0
+        # Monotonic deadline while the owner key is treated as rejected.
+        self._owner_key_rejected_until: float = 0.0
 
         logger.info(
             "AgentCardRegistry created (registry_url=%s, cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",
@@ -484,6 +489,24 @@ class AgentCardRegistry:
             "subsequent lookups will skip HTTP until it expires.",
             cooldown,
         )
+
+    def _mark_owner_key_rejected(self, status_code: int) -> None:
+        """Stop owner-key requests for a while after DataRobot rejects the key itself."""
+        self._owner_key_rejected_until = time.monotonic() + _OWNER_KEY_REJECTED_SECONDS
+        logger.warning(
+            "Agent card registry rejected the owner API key (HTTP %d); owner-key lookups "
+            "are skipped for %ds. Lookups with the caller's credentials continue.",
+            status_code,
+            _OWNER_KEY_REJECTED_SECONDS,
+        )
+
+    def _raise_if_owner_key_unusable(self) -> None:
+        """Raise without HTTP while the owner key is rejected or the registry cools down."""
+        if time.monotonic() < self._owner_key_rejected_until:
+            raise AgentCardRegistryError(
+                "Agent card registry rejected the owner API key; skipping the owner-key request."
+            )
+        self._raise_if_cooldown_active()
 
     def _raise_if_cooldown_active(self) -> None:
         """Raise when the process-local failure cooldown has not expired."""
@@ -566,16 +589,19 @@ class AgentCardRegistry:
         follows ``next`` links until all pages are consumed.
 
         After a transport or HTTP failure on the owner-key path a short
-        process-local cooldown skips further HTTP attempts so soft-expired
-        on-demand lookups do not stampede Control Hub while it is down.
-        Caller-credential failures do not start the cooldown: those fall back
-        to the owner key, which must still be allowed to try.
+        process-local cooldown skips further owner-key HTTP attempts so
+        soft-expired on-demand lookups do not stampede Control Hub while it is
+        down. A 401 or 403 on that path means the owner key itself is dead, so
+        owner-key requests stop for longer instead. Neither applies to lookups
+        with the caller's credentials: after the owner's account is deactivated
+        those are the only ones that can work.
         """
-        self._raise_if_cooldown_active()
+        using_owner_key = auth_headers is None
+        if using_owner_key:
+            self._raise_if_owner_key_unusable()
 
         registry_url = self._registry_url
         headers = auth_headers or {"Authorization": f"Bearer {self._api_token}"}
-        using_owner_key = auth_headers is None
         params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
 
         logger.info(
@@ -615,7 +641,10 @@ class AgentCardRegistry:
 
         except httpx.HTTPStatusError as exc:
             if using_owner_key:
-                self._mark_registry_unhealthy()
+                if exc.response.status_code in _KEY_REJECTED_STATUS_CODES:
+                    self._mark_owner_key_rejected(exc.response.status_code)
+                else:
+                    self._mark_registry_unhealthy()
             raise AgentCardRegistryError(
                 f"Agent card registry request failed with HTTP "
                 f"{exc.response.status_code}. Verify your API token and that "

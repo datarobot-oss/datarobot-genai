@@ -148,6 +148,29 @@ class TestCallerAuthLookup:
         assert card.name == "owner"
         assert _tokens_sent(router) == [USER_A, OWNER_KEY]
 
+    @pytest.mark.parametrize(
+        "owner_failure, skipped_because",
+        [(403, "rejected the owner API key"), (503, "failure cooldown")],
+        ids=["owner-key-rejected", "registry-down"],
+    )
+    async def test_owner_failure_does_not_block_caller_lookups(
+        self, router, owner_failure, skipped_because
+    ):
+        """GIVEN the owner key failed THEN caller lookups still go out, owner lookups do not."""
+        registry = _registry()
+        router.side_effect = _by_bearer(
+            {OWNER_KEY: httpx.Response(owner_failure), USER_A: _ok("for-a")}
+        )
+        with pytest.raises(AgentCardRegistryError, match=f"HTTP {owner_failure}"):
+            await registry.prefetch(deployment_ids=["dep-0"])
+
+        card = await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
+        with pytest.raises(AgentCardRegistryError, match=skipped_because):
+            await registry.get(deployment_id="dep-2")
+
+        assert card.name == "for-a"
+        assert _tokens_sent(router) == [OWNER_KEY, USER_A]
+
     async def test_caller_not_found_falls_back_to_owner_key(self, router):
         """GIVEN the caller cannot see the card THEN the owner key is tried."""
         registry = _registry()
