@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datarobot-genai"
-version = "0.34.1"
+version = "0.34.2"
 description = "Generic helpers for GenAI"
 readme = "README.md"
 requires-python = ">=3.11.5, <3.14"
@@ -132,9 +132,9 @@ override-dependencies = [
     "crewai>=1.15.21",
     "cryptography>=50.0.0",
     "json-repair>=0.60.1",
-    "litellm>=1.96.2,<2.0.0",
+    "litellm>=1.100.4,<2.0.0",
     "mcp>=1.30.0,<2",
-    "opentelemetry-api>=1.45.1,<2.0.0",
+    "opentelemetry-api>=1.45.2,<2.0.0",
     "opentelemetry-exporter-otlp-proto-common>=1.45.1,<2.0.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.45.1,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.45.1,<2.0.0",
@@ -161,7 +161,7 @@ dev = [
   "respx>=0.22.0",
   # drtools top-level imports needed by TestTaxonomyCompleteness (_walk imports all drtools modules)
   "beautifulsoup4>=4.12.0",
-  "pypdf>=6.21.2",
+  "pypdf>=6.21.4",
   "polars>=1.0.0",
   "tavily-python>=0.7.20",
   "perplexityai>=0.27",
