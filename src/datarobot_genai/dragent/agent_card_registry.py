@@ -501,7 +501,7 @@ class AgentCardRegistry:
         )
 
     def _raise_if_owner_key_rejected(self) -> None:
-        """Raise without HTTP while the registry's last answer to the owner key was 401/403."""
+        """Raise without HTTP until the owner-key hold expires."""
         remaining = self._owner_key_rejected_until - time.monotonic()
         if remaining > 0:
             raise AgentCardRegistryError(
@@ -875,6 +875,8 @@ class AgentCardRegistry:
             cause = exc.__cause__ or exc
             if isinstance(cause, httpx.HTTPStatusError):
                 reason = f"HTTP {cause.response.status_code}"
+            elif exc.__cause__ is None and self._cooldown_active():
+                reason = "skipped, registry cooldown"
             else:
                 reason = type(cause).__name__
         else:

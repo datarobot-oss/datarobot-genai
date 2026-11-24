@@ -37,6 +37,7 @@ OWNER_KEY = "dummy-owner-key-O1"
 USER_A = "dummy-user-token-A7f3"
 USER_B = "dummy-user-token-B9c1"
 DEP = "dep-1"
+_REGISTRY = "datarobot_genai.dragent.agent_card_registry"
 
 
 def _card_dict(name: str) -> dict:
@@ -67,9 +68,9 @@ def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _registry(backend=None) -> AgentCardRegistry:
+def _registry(backend=None, **config) -> AgentCardRegistry:
     registry = AgentCardRegistry(
-        config=AgentCardRegistryConfig(),
+        config=AgentCardRegistryConfig(**config),
         api_token=OWNER_KEY,
         endpoint="https://ep",
     )
@@ -165,26 +166,47 @@ class TestCallerAuthLookup:
         """GIVEN an owner-key failure THEN only a registry failure also skips caller lookups."""
         registry = _registry()
         router.side_effect = _by_bearer({OWNER_KEY: owner_failure, USER_A: _ok("for-a")})
-        with patch("datarobot_genai.dragent.agent_card_registry.random.uniform", return_value=45.0):
+        now = [1000.0]
+        with (
+            patch(f"{_REGISTRY}.random.uniform", return_value=45.0),
+            patch(f"{_REGISTRY}.time", wraps=time) as clock,
+        ):
+            clock.monotonic.side_effect = lambda: now[0]
             with pytest.raises(AgentCardRegistryError):
                 await registry.prefetch(deployment_ids=["dep-0"])
-        deadline = max(registry._unhealthy_until, registry._owner_key_rejected_until)
-        assert deadline - time.monotonic() == pytest.approx(45, abs=1)
 
-        with pytest.raises(AgentCardRegistryError, match=skipped_because):
-            await registry.get(deployment_id="dep-2")
-        if caller_lookup_sent:
-            card = await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
-            assert card.name == "for-a"
-        else:
+            now[0] += 44
             with pytest.raises(AgentCardRegistryError, match=skipped_because):
-                await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
-        assert _tokens_sent(router) == [OWNER_KEY] + [USER_A] * caller_lookup_sent
+                await registry.get(deployment_id="dep-2")
+            if caller_lookup_sent:
+                card = await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
+                assert card.name == "for-a"
+            else:
+                skipped = r"failure cooldown .*\(caller-token lookup: skipped, registry cooldown\)$"
+                with pytest.raises(AgentCardRegistryError, match=skipped):
+                    await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
 
-        registry._unhealthy_until = registry._owner_key_rejected_until = 0.0
-        with pytest.raises(AgentCardRegistryError):
-            await registry.get(deployment_id="dep-2")
-        assert _tokens_sent(router)[-1] == OWNER_KEY
+            now[0] += 2
+            with pytest.raises(AgentCardRegistryError):
+                await registry.get(deployment_id="dep-2")
+
+        assert _tokens_sent(router) == [OWNER_KEY, *[USER_A] * caller_lookup_sent, OWNER_KEY]
+
+    async def test_stale_card_is_served_while_owner_key_is_held(self, router):
+        """GIVEN a stale card and a held owner key WHEN the caller misses THEN serve stale."""
+        registry = _registry(agent_card_registry_soft_cache_ttl=60)
+        router.side_effect = _by_bearer({OWNER_KEY: _ok("owner")})
+        await registry.get(deployment_id=DEP)
+        registry._age_cache_entry_for_test(DEP, 61)
+        router.side_effect = _by_bearer(
+            {OWNER_KEY: httpx.Response(403), USER_A: httpx.Response(200, json={"data": []})}
+        )
+
+        assert (await registry.get(deployment_id=DEP)).name == "owner"
+        card = await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
+
+        assert card.name == "owner"
+        assert _tokens_sent(router) == [OWNER_KEY, OWNER_KEY, USER_A]
 
     async def test_caller_miss_with_rejected_owner_key_keeps_the_caller_reason(self, router):
         """GIVEN a rejected owner key WHEN the caller can't see the card THEN the error says so."""

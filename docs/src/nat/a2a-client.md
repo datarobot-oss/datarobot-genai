@@ -200,7 +200,7 @@ Exactly one of the three fields must be set.
 | `RuntimeError: Failed to fetch agent card from …` | Direct-fetch URL unreachable or auth failed. | Verify `url` and `auth_provider` configuration. |
 | `AgentCardRegistryError: DataRobot API token is required` | `DATAROBOT_API_TOKEN` not set. | Export the variable or add it to `.env`. |
 | `AgentCardRegistryError: DataRobot API endpoint is required` | `DATAROBOT_ENDPOINT` not set. | Export the variable or add it to `.env`. |
-| `AgentCardRegistryError: … HTTP 401` | Token invalid or expired. | Regenerate the API token in the DataRobot console. |
+| `AgentCardRegistryError: … HTTP 401` or `… HTTP 403` | Token invalid or expired, or its owner was deactivated. A trailing `(caller-token lookup: …)` describes the caller's lookup, not `DATAROBOT_API_TOKEN`. | Regenerate the API token in the DataRobot console. |
 | `AgentCardRegistryError: Agent card registry rejected the owner API key …` | The registry answered 401 or 403 to `DATAROBOT_API_TOKEN`, for example because its owner was deactivated. Lookups with the caller's credentials still work. | Give the agent a working API key, for example by redeploying it as an active user. |
 | `AgentCardRegistryError: No agent card found …` | The deployment or workload is not in the registry. | Confirm the agent is running and has an A2A agent card published. |
 | `ValueError: … 'url' … or 'registry' …, not both` | Both fields set. | Remove one — they are mutually exclusive. |
