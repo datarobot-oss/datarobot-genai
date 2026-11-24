@@ -16,7 +16,7 @@
 
 # MCP tools in NAT workflows
 
-This matches the **`function_groups`**, **`authentication`**, and **`workflow.tool_names`** sections in [`e2e-tests/dragent/nat/workflow.yaml`](../../e2e-tests/dragent/nat/workflow.yaml).
+Add these three sections to a NAT `workflow.yaml` to give the agent tools from an MCP server.
 
 ## `function_groups` — attach an MCP server
 
