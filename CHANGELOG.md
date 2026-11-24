@@ -4,12 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
-- `dragent`: An agent whose own DataRobot API key is rejected (its owner was deactivated, or the key
-  deleted) keeps finding agent cards with the caller's credentials. The registry's failure cooldown now
-  applies only to requests made with the agent's key, so it no longer skips lookups made with the
-  caller's token. A 401 or 403 on the agent's key now stops requests with that key for 10 minutes
-  instead of starting the 30 to 60 second cooldown, which kept restarting and blocked caller lookups.
+## 0.34.2 - 2026-11-24
+- `dragent`: When the agent card registry rejects the agent's own API key (HTTP 401 or 403, for
+  example after the key's owner was deactivated), lookups with the caller's credentials keep
+  working. Before, the rejection started the failure cooldown, which skipped caller lookups too.
+  Now it skips only requests with the agent's key, for the same 30 to 60 seconds.
+- `dragent`: When a caller lookup falls back to the agent's key and that fails too, the error also
+  says why the caller lookup failed.
 
 ## 0.34.1 - 2026-11-23
 - Drop the `[async]` extra from `llama-index-llms-bedrock-converse` and require `>=0.15.3`. The
