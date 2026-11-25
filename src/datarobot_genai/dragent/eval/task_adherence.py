@@ -15,7 +15,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator
 
 from datarobot_dome.guard_helpers import calculate_task_adherence
@@ -44,17 +43,11 @@ async def score_task_adherence_item(
     prompt = coerce_text(item.input_obj)
     response = coerce_text(item.output_obj)
     interactions = interactions_json_from_eval_item(item) or ""
-    score = await asyncio.to_thread(
-        calculate_task_adherence,
-        scorer,
-        prompt,
-        interactions,
-        response,
-    )
+    score, reason = await calculate_task_adherence(scorer, prompt, interactions, response)
     return EvalOutputItem(
         id=item.id,
         score=score,
-        reasoning={"metric": "task_adherence"},
+        reasoning={"metric": "task_adherence", "reason": reason},
     )
 
 

@@ -1687,7 +1687,9 @@ async def test_blocked_prompt_counter_is_published_through_otel(builder_mock: Ma
     _drain_guard_metrics()
 
     # THEN the blocked counter is published as an OTel metric and published once
-    otel.set_value.assert_any_call("Blocked Prompts", prescore[f"blocked_{PROMPT_COL}"].iloc[0])
+    otel.set_value.assert_any_call(
+        "Blocked Prompts", prescore[f"blocked_{PROMPT_COL}"].iloc[0], attributes=None
+    )
     otel.publish_values.assert_called_once()
     # AND the DataRobot custom-metric upload is skipped: DOME needs the association-id column
     pipeline.upload_custom_metrics.assert_not_called()

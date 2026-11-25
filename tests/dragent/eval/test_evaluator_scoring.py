@@ -47,7 +47,7 @@ async def test_score_faithfulness_item_delegates_to_guard_helper(
     ) as mock_calc:
         result = await score_faithfulness_item(evaluator, item)
 
-    mock_calc.assert_called_once_with(evaluator, "q", "answer", ["doc"])
+    mock_calc.assert_awaited_once_with(evaluator, "q", "answer", ["doc"])
     assert result.score == 1.0
     assert result.reasoning["metric"] == "faithfulness"
     assert result.reasoning["context_count"] == 1
@@ -79,13 +79,13 @@ async def test_score_task_adherence_item_delegates_to_guard_helper(
     scorer = mock.Mock()
     with mock.patch(
         "datarobot_genai.dragent.eval.task_adherence.calculate_task_adherence",
-        return_value=0.8,
+        return_value=(0.8, "on task"),
     ) as mock_calc:
         result = await score_task_adherence_item(scorer, item)
 
-    mock_calc.assert_called_once_with(scorer, "task", "", "done")
+    mock_calc.assert_awaited_once_with(scorer, "task", "", "done")
     assert result.score == 0.8
-    assert result.reasoning["metric"] == "task_adherence"
+    assert result.reasoning == {"metric": "task_adherence", "reason": "on task"}
 
 
 @pytest.mark.asyncio

@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Now it skips only requests with the agent's key, for the same 30 to 60 seconds.
 - `dragent`: When a caller lookup falls back to the agent's key and that fails too, the error also
   says why the caller lookup failed.
+- Require `datarobot-moderations` 11.5.0 or later. A model guard whose deployment the agent's key
+  can't read is now scored by deployment ID instead of failing.
+- `dragent` eval: the faithfulness and task adherence evaluators await the moderations scoring
+  helpers, which are async since 11.5.0. The task adherence score is now the score alone, and its
+  reason moves to `reasoning`. Before, the score held the whole (score, reason) pair.
 
 ## 0.34.1 - 2026-11-23
 - Drop the `[async]` extra from `llama-index-llms-bedrock-converse` and require `>=0.15.3`. The

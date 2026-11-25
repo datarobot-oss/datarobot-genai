@@ -35,7 +35,8 @@ core = [
     "opentelemetry-instrumentation-httpx>=0.64b0,<1.0.0",
     "opentelemetry-instrumentation-openai>=0.62.1,<1.0.0",
     "opentelemetry-instrumentation-threading>=0.64b0,<1.0.0",
-    "datarobot-moderations[all]>=11.4.1,<12.0.0",
+    # 11.5.0: model guards score by deployment ID when the deployment record is unreadable.
+    "datarobot-moderations[all]>=11.5.0,<12.0.0",
     # No [async] extra: its aioboto3 caps boto3 below 1.40.62, and every CVE-safe litellm needs
     # boto3>=1.43. From 0.15.3 bedrock-converse runs async calls in a thread without aioboto3.
     "llama-index-llms-bedrock-converse>=0.15.3",
