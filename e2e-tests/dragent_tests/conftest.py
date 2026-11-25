@@ -76,8 +76,8 @@ def authorization_context_encoded(session_secret_key, datarobot_user_id) -> str:
     ctx = AuthCtx(
         user=User(
             id=datarobot_user_id,
-            name="buzok-ci-agents",
-            email="buzok-ci-agents@datarobot.com",
+            name="e2e-test-user",
+            email="e2e-test-user@example.com",
         ),
         identities=[]
     )
