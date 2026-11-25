@@ -100,9 +100,33 @@ def wrap_langchain_judge_for_llamaindex(llm: object) -> Any:
             "for LlamaIndex-based evaluation."
         )
     try:
+        from langchain_core.messages import AIMessage
+        from llama_index.core.base.llms.types import ChatResponse
+        from llama_index.core.base.llms.types import CompletionResponse
         from llama_index.core.llms import LLM
+        from llama_index.core.llms.callbacks import llm_chat_callback
+        from llama_index.core.llms.callbacks import llm_completion_callback
         from llama_index.llms.langchain import LangChainLLM
+        from llama_index.llms.langchain.utils import from_lc_messages
+        from llama_index.llms.langchain.utils import to_lc_messages
     except ImportError as e:
         raise require_extra("llama-index-llms-langchain", "llm-eval", e) from e
 
-    return cast(LLM, LangChainLLM(llm=llm))
+    class _AsyncLangChainLLM(LangChainLLM):
+        # LangChainLLM's achat/acomplete call the sync methods and block the event loop.
+        @llm_chat_callback()
+        async def achat(self, messages: Any, **kwargs: Any) -> ChatResponse:
+            lc_message = await self._llm.ainvoke(input=to_lc_messages(messages), **kwargs)
+            return ChatResponse(message=from_lc_messages([lc_message])[0])
+
+        @llm_completion_callback()
+        async def acomplete(
+            self, prompt: str, formatted: bool = False, **kwargs: Any
+        ) -> CompletionResponse:
+            if not formatted:
+                prompt = self.completion_to_prompt(prompt)
+            output = await self._llm.ainvoke(prompt, **kwargs)
+            text = output.content if isinstance(output, AIMessage) else output
+            return CompletionResponse(text=text)
+
+    return cast(LLM, _AsyncLangChainLLM(llm=llm))

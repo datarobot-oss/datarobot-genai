@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `dragent` eval: the faithfulness and task adherence evaluators await the moderations scoring
   helpers, which are async since 11.5.0. The task adherence score is now the score alone, and its
   reason moves to `reasoning`. Before, the score held the whole (score, reason) pair.
+- `dragent` eval: the LLM judge for faithfulness and guideline adherence makes its async calls
+  with the chat model's `ainvoke`. LlamaIndex's `LangChainLLM` ran them synchronously, which
+  blocked the event loop, so items were scored one at a time.
 
 ## 0.34.1 - 2026-11-23
 - Drop the `[async]` extra from `llama-index-llms-bedrock-converse` and require `>=0.15.3`. The
