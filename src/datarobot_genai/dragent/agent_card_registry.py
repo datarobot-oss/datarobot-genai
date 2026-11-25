@@ -98,6 +98,8 @@ _MAX_PAGES = 100
 # Process-local cooldown after a registry transport/HTTP failure (jittered).
 _FAILURE_COOLDOWN_MIN_SECONDS = 30.0
 _FAILURE_COOLDOWN_MAX_SECONDS = 60.0
+# The registry rejecting the key itself, e.g. because the key's owner was deactivated.
+_KEY_REJECTED_STATUS_CODES = (401, 403)
 
 # Allowed strategies for duplicate external IDs.
 DuplicateStrategy = Literal["first", "last", "error"]
@@ -454,6 +456,8 @@ class AgentCardRegistry:
         self._backend = create_agent_card_cache_backend(self._cache_ttl)
         # Monotonic deadline while the registry is treated as unhealthy.
         self._unhealthy_until: float = 0.0
+        # Monotonic deadline while the owner key is treated as rejected.
+        self._owner_key_rejected_until: float = 0.0
 
         logger.info(
             "AgentCardRegistry created (registry_url=%s, cache_ttl=%ds, soft_cache_ttl=%ds, l2=%s)",
@@ -484,6 +488,26 @@ class AgentCardRegistry:
             "subsequent lookups will skip HTTP until it expires.",
             cooldown,
         )
+
+    def _mark_owner_key_rejected(self, status_code: int) -> None:
+        """Skip owner-key requests for a jittered cooldown; caller lookups continue."""
+        hold = random.uniform(_FAILURE_COOLDOWN_MIN_SECONDS, _FAILURE_COOLDOWN_MAX_SECONDS)
+        self._owner_key_rejected_until = time.monotonic() + hold
+        logger.warning(
+            "Agent card registry rejected the owner API key (HTTP %d); owner-key lookups "
+            "are skipped for %.0fs. Lookups with the caller's credentials continue.",
+            status_code,
+            hold,
+        )
+
+    def _raise_if_owner_key_rejected(self) -> None:
+        """Raise without HTTP until the owner-key hold expires."""
+        remaining = self._owner_key_rejected_until - time.monotonic()
+        if remaining > 0:
+            raise AgentCardRegistryError(
+                f"Agent card registry rejected the owner API key ({remaining:.0f}s until the "
+                f"next try); skipping the owner-key request."
+            )
 
     def _raise_if_cooldown_active(self) -> None:
         """Raise when the process-local failure cooldown has not expired."""
@@ -569,20 +593,24 @@ class AgentCardRegistry:
         process-local cooldown skips further HTTP attempts so soft-expired
         on-demand lookups do not stampede Control Hub while it is down.
         Caller-credential failures do not start the cooldown: those fall back
-        to the owner key, which must still be allowed to try.
+        to the owner key, which must still be allowed to try. A 401 or 403 on
+        the owner key rejects the key, not the registry, so it skips only
+        owner-key requests for the same time and caller lookups continue.
         """
+        using_owner_key = not auth_headers
         self._raise_if_cooldown_active()
+        if using_owner_key:
+            self._raise_if_owner_key_rejected()
 
         registry_url = self._registry_url
         headers = auth_headers or {"Authorization": f"Bearer {self._api_token}"}
-        using_owner_key = auth_headers is None
         params_with_limit = {"limit": str(_MAX_PAGE_SIZE), **params}
 
         logger.info(
             "Fetching agent cards from registry: %s (params=%s, credential=%s)",
             registry_url,
             params,
-            "caller" if auth_headers else "owner",
+            "owner" if using_owner_key else "caller",
         )
 
         all_entries: list[dict[str, Any]] = []
@@ -615,7 +643,10 @@ class AgentCardRegistry:
 
         except httpx.HTTPStatusError as exc:
             if using_owner_key:
-                self._mark_registry_unhealthy()
+                if exc.response.status_code in _KEY_REJECTED_STATUS_CODES:
+                    self._mark_owner_key_rejected(exc.response.status_code)
+                else:
+                    self._mark_registry_unhealthy()
             raise AgentCardRegistryError(
                 f"Agent card registry request failed with HTTP "
                 f"{exc.response.status_code}. Verify your API token and that "
@@ -840,8 +871,14 @@ class AgentCardRegistry:
         try:
             parsed = await self._fetch(params, auth_headers=auth_headers)
         except (AgentCardRegistryError, UnicodeEncodeError) as exc:
-            # Log the type only: the error may carry the caller's headers.
-            reason = type(exc.__cause__ or exc).__name__
+            # Log the type or status only: the error may carry the caller's headers.
+            cause = exc.__cause__ or exc
+            if isinstance(cause, httpx.HTTPStatusError):
+                reason = f"HTTP {cause.response.status_code}"
+            elif exc.__cause__ is None and self._cooldown_active():
+                reason = "skipped, registry cooldown"
+            else:
+                reason = type(cause).__name__
         else:
             await self._store_cards(parsed)
             if lookup_key in parsed.cards:
@@ -854,7 +891,10 @@ class AgentCardRegistry:
             lookup_key,
             reason,
         )
-        return await self._get_with_owner_key(lookup_key, lookup_key_type)
+        try:
+            return await self._get_with_owner_key(lookup_key, lookup_key_type)
+        except AgentCardRegistryError as exc:
+            raise AgentCardRegistryError(f"{exc} (caller-token lookup: {reason})") from exc
 
     async def _get_with_owner_key(
         self, lookup_key: str, lookup_key_type: LookupKeyType

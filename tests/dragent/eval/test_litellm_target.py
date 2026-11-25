@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -85,16 +86,30 @@ def test_langchain_chat_model_to_litellm_unsupported() -> None:
         langchain_chat_model_to_litellm(object())
 
 
-def test_wrap_langchain_judge_for_llamaindex() -> None:
+async def test_wrap_langchain_judge_for_llamaindex_calls_the_async_model() -> None:
     pytest.importorskip("llama_index.llms.langchain")
     from langchain_core.language_models import BaseChatModel
-    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration
+    from langchain_core.outputs import ChatResult
+    from llama_index.core.llms import ChatMessage
 
-    llm = ChatOpenAI(model="gpt-4o-mini", api_key="secret")
-    assert isinstance(llm, BaseChatModel)
+    class AsyncOnlyChatModel(BaseChatModel):
+        @property
+        def _llm_type(self) -> str:
+            return "async-only"
 
-    wrapped = wrap_langchain_judge_for_llamaindex(llm)
-    assert wrapped is not None
+        def _generate(self, *args: Any, **kwargs: Any) -> ChatResult:
+            raise AssertionError("a sync call blocks the event loop")
+
+        async def _agenerate(self, *args: Any, **kwargs: Any) -> ChatResult:
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content="judged"))])
+
+    wrapped = wrap_langchain_judge_for_llamaindex(AsyncOnlyChatModel())
+
+    chat = await wrapped.achat([ChatMessage(role="user", content="q")])
+    completion = await wrapped.acomplete("q")
+    assert (chat.message.content, completion.text) == ("judged", "judged")
 
 
 def test_wrap_langchain_judge_for_llamaindex_rejects_non_chat_model() -> None:

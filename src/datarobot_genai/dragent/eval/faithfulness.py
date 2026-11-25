@@ -15,7 +15,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator
 
 from datarobot_dome.guard_helpers import calculate_faithfulness
@@ -44,13 +43,7 @@ async def score_faithfulness_item(
     prompt = coerce_text(item.input_obj)
     response = coerce_text(item.output_obj)
     context = citations_from_eval_item(item)
-    score = await asyncio.to_thread(
-        calculate_faithfulness,
-        evaluator,
-        prompt,
-        response,
-        context,
-    )
+    score = await calculate_faithfulness(evaluator, prompt, response, context)
     return EvalOutputItem(
         id=item.id,
         score=score,

@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.34.2 - 2026-11-24
+- `dragent`: When the agent card registry rejects the agent's own API key (HTTP 401 or 403, for
+  example after the key's owner was deactivated), lookups with the caller's credentials keep
+  working. Before, the rejection started the failure cooldown, which skipped caller lookups too.
+  Now it skips only requests with the agent's key, for the same 30 to 60 seconds.
+- `dragent`: When a caller lookup falls back to the agent's key and that fails too, the error also
+  says why the caller lookup failed.
+- Require `datarobot-moderations` 11.5.0 or later. A model guard whose deployment the agent's key
+  can't read is now scored by deployment ID instead of failing.
+- `dragent` eval: the faithfulness and task adherence evaluators await the moderations scoring
+  helpers, which are async since 11.5.0. The task adherence score is now the score alone, and its
+  reason moves to `reasoning`. Before, the score held the whole (score, reason) pair.
+- `dragent` eval: the LLM judge for faithfulness and guideline adherence makes its async calls
+  with the chat model's `ainvoke`. LlamaIndex's `LangChainLLM` ran them synchronously, which
+  blocked the event loop, so items were scored one at a time.
+
 ## 0.34.1 - 2026-11-23
 - Drop the `[async]` extra from `llama-index-llms-bedrock-converse` and require `>=0.15.3`. The
   extra pulled in `aioboto3`, which pins `aiobotocore` and caps `boto3` below 1.40.62. Every

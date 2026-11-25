@@ -16,6 +16,7 @@
 
 import asyncio
 import logging
+import time
 import traceback
 from unittest.mock import AsyncMock
 from unittest.mock import patch
@@ -36,6 +37,7 @@ OWNER_KEY = "dummy-owner-key-O1"
 USER_A = "dummy-user-token-A7f3"
 USER_B = "dummy-user-token-B9c1"
 DEP = "dep-1"
+_REGISTRY = "datarobot_genai.dragent.agent_card_registry"
 
 
 def _card_dict(name: str) -> dict:
@@ -66,9 +68,9 @@ def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _registry(backend=None) -> AgentCardRegistry:
+def _registry(backend=None, **config) -> AgentCardRegistry:
     registry = AgentCardRegistry(
-        config=AgentCardRegistryConfig(),
+        config=AgentCardRegistryConfig(**config),
         api_token=OWNER_KEY,
         endpoint="https://ep",
     )
@@ -148,6 +150,79 @@ class TestCallerAuthLookup:
         assert card.name == "owner"
         assert _tokens_sent(router) == [USER_A, OWNER_KEY]
 
+    @pytest.mark.parametrize(
+        "owner_failure, caller_lookup_sent, skipped_because",
+        [
+            (httpx.Response(401), True, "rejected the owner API key"),
+            (httpx.Response(403), True, "rejected the owner API key"),
+            (httpx.Response(503), False, "failure cooldown"),
+            (httpx.ConnectError("refused"), False, "failure cooldown"),
+        ],
+        ids=["owner-key-401", "owner-key-403", "registry-503", "registry-unreachable"],
+    )
+    async def test_owner_failure_skips_requests_for_the_cooldown(
+        self, router, owner_failure, caller_lookup_sent, skipped_because
+    ):
+        """GIVEN an owner-key failure THEN only a registry failure also skips caller lookups."""
+        registry = _registry()
+        router.side_effect = _by_bearer({OWNER_KEY: owner_failure, USER_A: _ok("for-a")})
+        now = [1000.0]
+        with (
+            patch(f"{_REGISTRY}.random.uniform", return_value=45.0),
+            patch(f"{_REGISTRY}.time", wraps=time) as clock,
+        ):
+            clock.monotonic.side_effect = lambda: now[0]
+            with pytest.raises(AgentCardRegistryError):
+                await registry.prefetch(deployment_ids=["dep-0"])
+
+            now[0] += 44
+            with pytest.raises(AgentCardRegistryError, match=skipped_because):
+                await registry.get(deployment_id="dep-2")
+            if caller_lookup_sent:
+                card = await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
+                assert card.name == "for-a"
+            else:
+                skipped = r"failure cooldown .*\(caller-token lookup: skipped, registry cooldown\)$"
+                with pytest.raises(AgentCardRegistryError, match=skipped):
+                    await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
+
+            now[0] += 2
+            with pytest.raises(AgentCardRegistryError):
+                await registry.get(deployment_id="dep-2")
+
+        assert _tokens_sent(router) == [OWNER_KEY, *[USER_A] * caller_lookup_sent, OWNER_KEY]
+
+    async def test_stale_card_is_served_while_owner_key_is_held(self, router):
+        """GIVEN a stale card and a held owner key WHEN the caller misses THEN serve stale."""
+        registry = _registry(agent_card_registry_soft_cache_ttl=60)
+        router.side_effect = _by_bearer({OWNER_KEY: _ok("owner")})
+        await registry.get(deployment_id=DEP)
+        registry._age_cache_entry_for_test(DEP, 61)
+        router.side_effect = _by_bearer(
+            {OWNER_KEY: httpx.Response(403), USER_A: httpx.Response(200, json={"data": []})}
+        )
+
+        assert (await registry.get(deployment_id=DEP)).name == "owner"
+        card = await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
+
+        assert card.name == "owner"
+        assert _tokens_sent(router) == [OWNER_KEY, OWNER_KEY, USER_A]
+
+    async def test_caller_miss_with_rejected_owner_key_keeps_the_caller_reason(self, router):
+        """GIVEN a rejected owner key WHEN the caller can't see the card THEN the error says so."""
+        registry = _registry()
+        router.side_effect = _by_bearer(
+            {OWNER_KEY: httpx.Response(403), USER_A: httpx.Response(200, json={"data": []})}
+        )
+        with pytest.raises(AgentCardRegistryError):
+            await registry.prefetch(deployment_ids=["dep-0"])
+
+        with pytest.raises(
+            AgentCardRegistryError,
+            match=r"rejected the owner API key.*\(caller-token lookup: not found\)",
+        ):
+            await registry.get(deployment_id=DEP, auth_headers=_headers(USER_A))
+
     async def test_caller_not_found_falls_back_to_owner_key(self, router):
         """GIVEN the caller cannot see the card THEN the owner key is tried."""
         registry = _registry()
@@ -173,7 +248,7 @@ class TestCallerAuthLookup:
         assert _tokens_sent(router) == [OWNER_KEY]
 
     async def test_both_fail_raises_owner_error(self, router):
-        """GIVEN caller and owner both rejected THEN today's owner error, after two requests."""
+        """GIVEN caller and owner both rejected THEN the owner error and the caller's status."""
         registry = _registry()
         router.side_effect = _by_bearer(
             {USER_A: httpx.Response(401), OWNER_KEY: httpx.Response(401)}
@@ -184,7 +259,7 @@ class TestCallerAuthLookup:
         with pytest.raises(AgentCardRegistryError) as owner_only:
             await _registry().get(deployment_id=DEP)
 
-        assert str(caller_first.value) == str(owner_only.value)
+        assert str(caller_first.value) == f"{owner_only.value} (caller-token lookup: HTTP 401)"
         assert _tokens_sent(router) == [USER_A, OWNER_KEY, OWNER_KEY]
 
     async def test_caller_lookup_does_not_wait_for_shared_lock(self, router):
