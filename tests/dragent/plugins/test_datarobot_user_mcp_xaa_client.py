@@ -108,17 +108,20 @@ async def test_nat_mcp_session_sends_each_call_with_the_newest_caller_token(
     config = MCPClientWithXAASupportConfig(
         server={"url": "http://127.0.0.1:8000/mcp", "auth_provider": "okta"}
     )
-    later, newest = _caller_headers("later", 3600), _caller_headers("newest", 7200)
+    callers = [_caller_headers(name, 3600 * n) for n, name in enumerate(["b", "c", "d"], 1)]
 
-    async def run() -> tuple[str, str]:
-        _set_request_headers(_caller_headers("opening", 600))
+    async def run() -> list[str]:
+        _set_request_headers(_caller_headers("a", 600))
         builder = Mock(get_auth_provider=AsyncMock(return_value=provider))
         async with mcp_client_with_xaa_support_function_group(config, builder) as group:
-            from_later = await asyncio.create_task(_call_whoami_as(group, later))
-            # NAT starts the session's lifecycle task again from the next call.
+            seen = [await asyncio.create_task(_call_whoami_as(group, callers[0]))]
+            # Kill the session like a failed transport does: NAT reconnects from c's call in a
+            # new lifecycle task, and d checks that task still follows the newest caller.
             group.mcp_client._lifecycle_task.cancel()
-            from_newest = await asyncio.create_task(_call_whoami_as(group, newest))
-        return from_later, from_newest
+            await group.mcp_client._session._write_stream.aclose()
+            for headers in callers[1:]:
+                seen.append(await asyncio.create_task(_call_whoami_as(group, headers)))
+        return seen
 
     with (
         patch(
@@ -133,10 +136,11 @@ async def test_nat_mcp_session_sends_each_call_with_the_newest_caller_token(
         ),
     ):
         async with server.session_manager.run():
-            from_later, from_newest = await asyncio.create_task(run())
+            seen = await asyncio.create_task(run())
 
-    assert from_later == f"Bearer {later[OAUTH_ACCESS_TOKEN_HEADER]} later"
-    assert from_newest == f"Bearer {newest[OAUTH_ACCESS_TOKEN_HEADER]} newest"
+    assert seen == [
+        f"Bearer {h[OAUTH_ACCESS_TOKEN_HEADER]} {h['x-datarobot-caller']}" for h in callers
+    ]
 
 
 class TestMCPAuthServerMetadataDiscovery:

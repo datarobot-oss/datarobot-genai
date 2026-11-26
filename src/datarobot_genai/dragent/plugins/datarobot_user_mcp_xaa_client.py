@@ -223,6 +223,8 @@ def _send_calls_with_their_own_headers(
     client: MCPBaseClient, session_headers: SessionInboundHeaders
 ) -> None:
     """Give the session each call's caller token before the call goes out."""
+    # NAT's tool clients reach these through the client's attributes, so wrapping them here
+    # covers every call. The real-client test checks this against NAT's code.
     for name in ("get_tools", "call_tool"):
         method = getattr(client, name)
 
