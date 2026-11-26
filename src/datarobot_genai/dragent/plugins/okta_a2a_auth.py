@@ -853,15 +853,31 @@ def get_token_exchange(
     return OktaTokenExchange(config, token_exchange_cache)
 
 
-class SessionInboundHeaders:
-    """The inbound headers of the latest call made through one MCP session."""
+def _token_exp(token: str) -> float:
+    try:
+        return float(XAATokenExchangeCacheManager.get_jwt_json_without_validating(token)["exp"])
+    except (jwt.PyJWTError, KeyError, TypeError, ValueError, AttributeError):
+        return 0.0
 
-    def __init__(self) -> None:
-        self.headers: Mapping[str, str] | None = None
+
+@dataclass
+class SessionInboundHeaders:
+    """The inbound headers one MCP session authenticates with: those of its newest caller token."""
+
+    headers: Mapping[str, str] | None = None
+
+    def update(self, headers: Mapping[str, str] | None) -> None:
+        """Take a call's headers unless they carry no caller token or one that expires sooner."""
+        token = find_idp_token(headers or {})
+        if token is None:
+            return
+        held = find_idp_token(self.headers or {})
+        if held is None or _token_exp(token) >= _token_exp(held):
+            self.headers = headers
 
 
 # NAT's MCP client sends from a task started when its session opened, and that task's NAT
-# context keeps the opening request's headers. A session's holder carries each call's instead.
+# context keeps the opening request's headers. The session's holder has the newest caller's.
 SESSION_INBOUND_HEADERS: ContextVar[SessionInboundHeaders | None] = ContextVar(
     "session_inbound_headers", default=None
 )
@@ -869,8 +885,8 @@ SESSION_INBOUND_HEADERS: ContextVar[SessionInboundHeaders | None] = ContextVar(
 
 def _inbound_headers() -> Mapping[str, str]:
     session = SESSION_INBOUND_HEADERS.get()
-    if session is not None and session.headers is not None:
-        return session.headers
+    if session is not None:
+        return session.headers or {}
     return Context.get().metadata.headers or {}
 
 

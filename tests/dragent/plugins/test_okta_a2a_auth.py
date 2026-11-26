@@ -58,6 +58,7 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import OktaTokenExchange
+from datarobot_genai.dragent.plugins.okta_a2a_auth import SessionInboundHeaders
 from datarobot_genai.dragent.plugins.okta_a2a_auth import XAATokenExchange
 from datarobot_genai.dragent.plugins.okta_a2a_auth import XAATokenExchangeCacheManager
 from datarobot_genai.dragent.plugins.okta_a2a_auth import XAATokenExchangeImpl
@@ -1349,6 +1350,28 @@ class TestInboundTokenExpiry:
         err = InboundTokenExpiredError(42.7)
         assert "42s ago" in str(err)
         assert OAUTH_ACCESS_TOKEN_HEADER in str(err)
+
+
+class TestSessionInboundHeaders:
+    @pytest.mark.parametrize(
+        ("offered_exp_offset", "taken"),
+        [(None, False), (60, False), (7200, True)],
+        ids=["no-caller-token", "expires-sooner", "expires-later"],
+    )
+    def test_takes_only_a_caller_token_that_expires_no_sooner(
+        self, offered_exp_offset: int | None, taken: bool
+    ) -> None:
+        held = {OAUTH_ACCESS_TOKEN_HEADER: make_jwt(sub="u", exp=time.time() + 3600)}
+        offered = (
+            {"x-datarobot-caller": "u"}
+            if offered_exp_offset is None
+            else {
+                OAUTH_ACCESS_TOKEN_HEADER: make_jwt(sub="u", exp=time.time() + offered_exp_offset)
+            }
+        )
+        session = SessionInboundHeaders(held)
+        session.update(offered)
+        assert session.headers is (offered if taken else held)
 
 
 class TestCacheRefreshMargin:

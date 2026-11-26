@@ -29,7 +29,6 @@ from nat.plugins.mcp.client.client_impl import PerUserMCPFunctionGroup
 from nat.plugins.mcp.client.client_impl import per_user_mcp_client_function_group
 from pydantic import Field
 from pydantic import HttpUrl
-from pydantic import model_validator
 
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import TokenEndpointAuthMethod
@@ -161,18 +160,6 @@ class MCPClientWithXAASupportConfig(  # type: ignore[call-arg]
         ),
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _auth_flow_timeout_defaults_to_tool_call_timeout(cls, data: Any) -> Any:
-        # NAT applies auth_flow_timeout to every call made with a provider that isn't its own
-        # OAuth one, and XAA has no browser login to wait for.
-        if isinstance(data, dict) and "auth_flow_timeout" not in data:
-            tool_call_timeout = data.get(
-                "tool_call_timeout", cls.model_fields["tool_call_timeout"].default
-            )
-            data = {**data, "auth_flow_timeout": tool_call_timeout}
-        return data
-
 
 def get_mcp_auth_server_metadata_url(
     config: MCPClientWithXAASupportConfig,
@@ -235,12 +222,12 @@ async def setup_auth_provider(
 def _send_calls_with_their_own_headers(
     client: MCPBaseClient, session_headers: SessionInboundHeaders
 ) -> None:
-    """Make the session authenticate each call with that call's inbound headers."""
+    """Give the session each call's caller token before the call goes out."""
     for name in ("get_tools", "call_tool"):
         method = getattr(client, name)
 
         async def with_call_headers(*args: Any, _method: Any = method, **kwargs: Any) -> Any:
-            session_headers.headers = Context.get().metadata.headers
+            session_headers.update(Context.get().metadata.headers)
             # A lifecycle task NAT starts again during this call copies this context.
             token = SESSION_INBOUND_HEADERS.set(session_headers)
             try:
@@ -260,7 +247,7 @@ async def mcp_client_with_xaa_support_function_group(
     if not isinstance(auth_provider, OAuth2CrossApplicationAccessOAuth2AuthProvider):
         raise ValueError("The auth_provider shall be a okta_cross_app_access type auth provider.")
 
-    session_headers = SessionInboundHeaders()
+    session_headers = SessionInboundHeaders(Context.get().metadata.headers)
     async with AsyncExitStack() as stack:
         try:
             await setup_auth_provider(auth_provider, config)
