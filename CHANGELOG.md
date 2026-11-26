@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.34.3 - 2026-11-26
+- `dragent`: `mcp_client_with_xaa_support` exchanges the token of the request that makes each MCP
+  call. Before, every call in a user's MCP session used the token of the request that opened the
+  session, because NAT's MCP client sends from a task started at that moment. About an hour after
+  the session opened, that token expired, the exchange was refused and the call hung.
+- `dragent`: `mcp_client_with_xaa_support` defaults `auth_flow_timeout` to `tool_call_timeout`
+  (60 seconds unless set). NAT gives `auth_flow_timeout` to every call made with a provider other
+  than its own OAuth one, so XAA tool calls waited up to 300 seconds, a wait meant for a browser
+  login that XAA never has. A call stuck on a dead session now fails after `tool_call_timeout`
+  and NAT reconnects. Set `auth_flow_timeout` to keep the old wait.
+
 ## 0.34.2 - 2026-11-24
 - `dragent`: When the agent card registry rejects the agent's own API key (HTTP 401 or 403, for
   example after the key's owner was deactivated), lookups with the caller's credentials keep

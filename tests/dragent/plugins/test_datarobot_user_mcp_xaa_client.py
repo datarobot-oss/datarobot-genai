@@ -11,15 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
+from collections.abc import AsyncIterator
 from collections.abc import Iterator
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
+from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
 from unittest.mock import patch
 
 import pytest
+from nat.builder.context import Context
 from nat.plugins.mcp.client.client_impl import PerUserMCPFunctionGroup
 
+from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
+from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
+    MCPClientWithXAASupportConfig,
+)
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
     get_mcp_auth_server_metadata_url,
 )
@@ -36,6 +46,9 @@ from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
 )
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import setup_auth_provider
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
+    OAuth2CrossApplicationAccessAuthProviderConfig,
+)
+from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
@@ -44,6 +57,21 @@ from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 @pytest.fixture
 def module_under_test() -> str:
     return "datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client"
+
+
+@pytest.mark.parametrize(
+    ("timeouts", "expected_seconds"),
+    [
+        ({}, 60),
+        ({"tool_call_timeout": 90}, 90),
+        ({"tool_call_timeout": 90, "auth_flow_timeout": 300}, 300),
+    ],
+)
+def test_auth_flow_timeout_defaults_to_tool_call_timeout(
+    timeouts: dict[str, int], expected_seconds: int
+) -> None:
+    config = MCPClientWithXAASupportConfig(server={"url": "https://mcp.example/mcp"}, **timeouts)
+    assert config.auth_flow_timeout == timedelta(seconds=expected_seconds)
 
 
 class TestMCPAuthServerMetadataDiscovery:
@@ -471,6 +499,56 @@ class TestSetupMCPClientWithXAASupportFunctionGroup:
             mock_config,
             mock_nat_builder,
         )
+
+    async def test_session_authenticates_each_call_with_that_calls_token(
+        self,
+        module_under_test: str,
+        mock_nat_builder: Mock,
+        mock_setup_auth_provider: AsyncMock,
+    ) -> None:
+        provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
+            config=OAuth2CrossApplicationAccessAuthProviderConfig()
+        )
+        mock_nat_builder.get_auth_provider.return_value = provider
+        request_headers: ContextVar[dict[str, str]] = ContextVar("request_headers")
+
+        @asynccontextmanager
+        async def nat_group(config: Any, builder: Any) -> AsyncIterator[Mock]:
+            # Like NAT's client, the session sends from a task started when it opened.
+            calls: asyncio.Queue[asyncio.Future[dict[str, str]]] = asyncio.Queue()
+
+            async def send() -> None:
+                while True:
+                    call = await calls.get()
+                    call.set_result(await provider.authenticate_for_discovery())
+
+            async def call_tool(*args: Any) -> dict[str, str]:
+                call = asyncio.get_running_loop().create_future()
+                await calls.put(call)
+                return await call
+
+            sender = asyncio.create_task(send())
+            yield Mock(mcp_client=Mock(call_tool=call_tool, get_tools=AsyncMock()))
+            sender.cancel()
+
+        async def later_request(group: Mock) -> dict[str, str]:
+            request_headers.set({OAUTH_ACCESS_TOKEN_HEADER: "current-token"})
+            return await group.mcp_client.call_tool("search_filings", {})
+
+        def nat_context() -> Mock:
+            return Mock(metadata=Mock(headers=request_headers.get()))
+
+        request_headers.set({OAUTH_ACCESS_TOKEN_HEADER: "opening-token"})
+        with (
+            patch(f"{module_under_test}.per_user_mcp_client_function_group", nat_group),
+            patch.object(Context, "get", nat_context),
+        ):
+            async with mcp_client_with_xaa_support_function_group(
+                Mock(), mock_nat_builder
+            ) as group:
+                headers = await asyncio.create_task(later_request(group))
+
+        assert headers == {"Authorization": "Bearer current-token"}
 
     async def test_mcp_client_with_xaa_support_function_group_error_with_incompatible_auth_provider(
         self,

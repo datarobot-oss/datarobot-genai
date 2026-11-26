@@ -89,6 +89,8 @@ import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
+from collections.abc import Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
@@ -851,6 +853,27 @@ def get_token_exchange(
     return OktaTokenExchange(config, token_exchange_cache)
 
 
+class SessionInboundHeaders:
+    """The inbound headers of the latest call made through one MCP session."""
+
+    def __init__(self) -> None:
+        self.headers: Mapping[str, str] | None = None
+
+
+# NAT's MCP client sends from a task started when its session opened, and that task's NAT
+# context keeps the opening request's headers. A session's holder carries each call's instead.
+SESSION_INBOUND_HEADERS: ContextVar[SessionInboundHeaders | None] = ContextVar(
+    "session_inbound_headers", default=None
+)
+
+
+def _inbound_headers() -> Mapping[str, str]:
+    session = SESSION_INBOUND_HEADERS.get()
+    if session is not None and session.headers is not None:
+        return session.headers
+    return Context.get().metadata.headers or {}
+
+
 # ---------------------------------------------------------------------------
 # OAuth2CrossApplicationAccessOAuth2AuthProvider
 # ---------------------------------------------------------------------------
@@ -909,7 +932,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         return set(TOKEN_HEADERS)
 
     def get_forwardable_x_datarobot_headers_from_inbound_request(self) -> list[HeaderCred]:
-        headers: dict[str, str] = Context.get().metadata.headers or {}
+        headers = _inbound_headers()
 
         return [
             HeaderCred(name=header_key, value=SecretStr(header_value))
@@ -959,9 +982,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         Uses ``inbound_token.find_idp_token``, the same function audience validation uses, so
         this cannot exchange a token from a header the validator never inspected.
         """
-        headers: dict[str, str] = Context.get().metadata.headers or {}
-
-        token = find_idp_token(headers)
+        token = find_idp_token(_inbound_headers())
         if token is not None:
             return token
 
