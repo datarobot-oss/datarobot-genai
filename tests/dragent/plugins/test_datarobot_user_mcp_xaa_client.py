@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+import contextlib
 import time
+from collections.abc import AsyncIterator
 from collections.abc import Iterator
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import Mock
@@ -28,6 +31,7 @@ from nat.data_models.api_server import Request
 from nat.plugins.mcp.client.client_impl import PerUserMCPFunctionGroup
 from nat.runtime.user_metadata import RequestAttributes
 from starlette.datastructures import Headers
+from starlette.responses import PlainTextResponse
 
 from datarobot_genai.dragent.inbound_token import OAUTH_ACCESS_TOKEN_HEADER
 from datarobot_genai.dragent.plugins.datarobot_user_mcp_xaa_client import (
@@ -74,15 +78,20 @@ def _set_request_headers(headers: dict[str, str]) -> None:
     ContextState.get().metadata.set(attrs)
 
 
-async def _call_whoami_as(group: PerUserMCPFunctionGroup, headers: dict[str, str]) -> str:
+async def _call_whoami_as(
+    group: PerUserMCPFunctionGroup, headers: dict[str, str], tool_name: str = "whoami"
+) -> str:
     _set_request_headers(headers)
-    tool = await group.mcp_client.get_tool("whoami")
+    tool = await group.mcp_client.get_tool(tool_name)
     return await tool.acall({})
 
 
-async def test_nat_mcp_session_sends_each_call_with_the_newest_caller_token(
-    module_under_test: str,
-) -> None:
+@asynccontextmanager
+async def _echo_mcp_group(
+    module_under_test: str, server_down: list[bool], gate: dict[str, asyncio.Event] | None = None
+) -> AsyncIterator[PerUserMCPFunctionGroup]:
+    """NAT's real MCP client over XAA to an in-process server whose tool echoes the caller."""
+    gate = gate or {"started": asyncio.Event(), "release": asyncio.Event()}
     server = FastMCP("echo", stateless_http=True, json_response=True)
 
     @server.tool()
@@ -90,7 +99,20 @@ async def test_nat_mcp_session_sends_each_call_with_the_newest_caller_token(
         headers = ctx.request_context.request.headers
         return f"{headers.get('authorization')} {headers.get('x-datarobot-caller')}"
 
+    @server.tool()
+    async def wait_for_release() -> str:
+        gate["started"].set()
+        await gate["release"].wait()
+        return "released"
+
     app = server.streamable_http_app()
+
+    async def restartable_app(scope: Any, receive: Any, send: Any) -> None:
+        if server_down[0] and scope["type"] == "http":
+            await PlainTextResponse("restarting", status_code=503)(scope, receive, send)
+        else:
+            await app(scope, receive, send)
+
     provider = OAuth2CrossApplicationAccessOAuth2AuthProvider(
         config=OAuth2CrossApplicationAccessAuthProviderConfig()
     )
@@ -108,25 +130,14 @@ async def test_nat_mcp_session_sends_each_call_with_the_newest_caller_token(
     config = MCPClientWithXAASupportConfig(
         server={"url": "http://127.0.0.1:8000/mcp", "auth_provider": "okta"}
     )
-    callers = [_caller_headers(name, 3600 * n) for n, name in enumerate(["b", "c", "d"], 1)]
-
-    async def run() -> list[str]:
-        _set_request_headers(_caller_headers("a", 600))
-        builder = Mock(get_auth_provider=AsyncMock(return_value=provider))
-        async with mcp_client_with_xaa_support_function_group(config, builder) as group:
-            seen = [await asyncio.create_task(_call_whoami_as(group, callers[0]))]
-            # Kill the session like a failed transport does: NAT reconnects from c's call in a
-            # new lifecycle task, and d checks that task still follows the newest caller.
-            group.mcp_client._lifecycle_task.cancel()
-            await group.mcp_client._session._write_stream.aclose()
-            for headers in callers[1:]:
-                seen.append(await asyncio.create_task(_call_whoami_as(group, headers)))
-        return seen
-
+    builder = Mock(get_auth_provider=AsyncMock(return_value=provider))
+    _set_request_headers(_caller_headers("a", 600))
     with (
         patch(
             "nat.plugins.mcp.client.client_base.create_mcp_http_client",
-            lambda **kwargs: httpx.AsyncClient(transport=httpx.ASGITransport(app=app), **kwargs),
+            lambda **kwargs: httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=restartable_app), **kwargs
+            ),
         ),
         patch(f"{module_under_test}.setup_auth_provider", AsyncMock()),
         patch.object(
@@ -136,11 +147,61 @@ async def test_nat_mcp_session_sends_each_call_with_the_newest_caller_token(
         ),
     ):
         async with server.session_manager.run():
-            seen = await asyncio.create_task(run())
+            async with mcp_client_with_xaa_support_function_group(config, builder) as group:
+                yield group
+
+
+async def _kill_session(group: PerUserMCPFunctionGroup) -> None:
+    # What a failed transport leaves behind: a finished lifecycle task and a closed session.
+    group.mcp_client._lifecycle_task.cancel()
+    await group.mcp_client._session._write_stream.aclose()
+
+
+async def test_nat_mcp_session_sends_each_call_with_the_newest_caller_token(
+    module_under_test: str,
+) -> None:
+    callers = [_caller_headers(name, 3600 * n) for n, name in enumerate(["b", "c", "d"], 1)]
+    async with _echo_mcp_group(module_under_test, [False]) as group:
+        seen = [await asyncio.create_task(_call_whoami_as(group, callers[0]))]
+        # NAT reconnects from c's call in a new lifecycle task; d checks it keeps up.
+        await _kill_session(group)
+        for headers in callers[1:]:
+            seen.append(await asyncio.create_task(_call_whoami_as(group, headers)))
 
     assert seen == [
         f"Bearer {h[OAUTH_ACCESS_TOKEN_HEADER]} {h['x-datarobot-caller']}" for h in callers
     ]
+
+
+async def test_nat_mcp_session_reconnects_once_the_server_is_back(
+    module_under_test: str,
+) -> None:
+    server_down = [False]
+    b, c = _caller_headers("b", 3600), _caller_headers("c", 7200)
+    async with _echo_mcp_group(module_under_test, server_down) as group:
+        server_down[0] = True
+        await _kill_session(group)
+        with contextlib.suppress(Exception):  # NAT's own reconnect fails while the server is down
+            await asyncio.create_task(_call_whoami_as(group, b))
+        server_down[0] = False
+        seen = await asyncio.create_task(_call_whoami_as(group, c))
+
+    assert seen == f"Bearer {c[OAUTH_ACCESS_TOKEN_HEADER]} c"
+
+
+async def test_nat_mcp_call_in_flight_fails_when_its_session_dies(
+    module_under_test: str,
+) -> None:
+    gate = {"started": asyncio.Event(), "release": asyncio.Event()}
+    async with _echo_mcp_group(module_under_test, [False], gate) as group:
+        call = asyncio.create_task(
+            _call_whoami_as(group, _caller_headers("b", 3600), "wait_for_release")
+        )
+        await asyncio.wait_for(gate["started"].wait(), 5)
+        await _kill_session(group)
+        with pytest.raises(ConnectionError):
+            await asyncio.wait_for(call, 5)
+        gate["release"].set()
 
 
 class TestMCPAuthServerMetadataDiscovery:

@@ -11,8 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncGenerator
+from collections.abc import Awaitable
 from contextlib import AsyncExitStack
 from typing import Any
 from typing import Literal
@@ -219,25 +222,53 @@ async def setup_auth_provider(
     return auth_provider
 
 
-def _send_calls_with_their_own_headers(
-    client: MCPBaseClient, session_headers: SessionInboundHeaders
-) -> None:
-    """Give the session each call's caller token before the call goes out."""
+def _wrap_session_calls(client: MCPBaseClient, session_headers: SessionInboundHeaders) -> None:
+    """Send each call with its caller's token on a live session; fail it if the session dies."""
+
+    async def connect_if_down() -> None:
+        # NAT reconnects only inside a call on a live session. After its reconnect fails (the
+        # server restarting), get_tool raises "not initialized" until something else revives it.
+        if client.is_connected:
+            return
+        async with client._reconnect_lock:  # NAT's own: never tear down a session it just rebuilt
+            if not client.is_connected:
+                await client._run_lifecycle_command("reconnect")
+
+    async def unless_session_dies(call: Awaitable[Any]) -> Any:
+        # A call in flight when NAT's session task dies gets no answer and would wait out its
+        # whole timeout (300 s). Fail it instead. No retry: the server may have run the tool.
+        session_task = client._lifecycle_task
+        call_task = asyncio.ensure_future(call)
+        if session_task is None:
+            return await call_task
+        try:
+            await asyncio.wait({call_task, session_task}, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            call_task.cancel()
+            raise
+        if call_task.done():
+            return call_task.result()
+        call_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await call_task
+        raise ConnectionError(f"MCP session to {client.server_name} closed during the call")
+
     # NAT's tool clients reach these through the client's attributes, so wrapping them here
-    # covers every call. The real-client test checks this against NAT's code.
-    for name in ("get_tools", "call_tool"):
+    # covers every call. The real-client tests check this against NAT's code.
+    for name in ("get_tool", "get_tools", "call_tool"):
         method = getattr(client, name)
 
-        async def with_call_headers(*args: Any, _method: Any = method, **kwargs: Any) -> Any:
+        async def wrapped(*args: Any, _method: Any = method, **kwargs: Any) -> Any:
             session_headers.update(Context.get().metadata.headers)
             # A lifecycle task NAT starts again during this call copies this context.
             token = SESSION_INBOUND_HEADERS.set(session_headers)
             try:
-                return await _method(*args, **kwargs)
+                await connect_if_down()
+                return await unless_session_dies(_method(*args, **kwargs))
             finally:
                 SESSION_INBOUND_HEADERS.reset(token)
 
-        setattr(client, name, with_call_headers)
+        setattr(client, name, wrapped)
 
 
 @register_per_user_function_group(config_type=MCPClientWithXAASupportConfig)
@@ -279,5 +310,5 @@ async def mcp_client_with_xaa_support_function_group(
             return
 
         if group.mcp_client is not None:
-            _send_calls_with_their_own_headers(group.mcp_client, session_headers)
+            _wrap_session_calls(group.mcp_client, session_headers)
         yield group

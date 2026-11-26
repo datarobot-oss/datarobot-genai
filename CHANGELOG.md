@@ -11,6 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   opened the session, because NAT's MCP client sends from a task started at that moment. About an
   hour after the session opened, that token expired, the exchange was refused and the call hung
   for `auth_flow_timeout` (300 seconds).
+- `dragent`: `mcp_client_with_xaa_support` connects again before a call when NAT's MCP client is
+  down. Before, once NAT's own reconnect failed (the MCP server restarting, for example during a
+  redeploy), every tool call failed with "MCPBaseClient not initialized" until some other call
+  happened to bring the session back. On HADR that took 5 minutes.
+- `dragent`: a tool call in flight when the MCP session dies now fails right away with
+  `ConnectionError`, instead of waiting out `auth_flow_timeout` (300 seconds). It is not retried,
+  because the server may already have run the tool.
 
 ## 0.34.2 - 2026-11-24
 - `dragent`: When the agent card registry rejects the agent's own API key (HTTP 401 or 403, for
