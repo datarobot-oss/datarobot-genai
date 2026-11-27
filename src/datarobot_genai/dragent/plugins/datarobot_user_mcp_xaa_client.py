@@ -11,8 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncGenerator
+from collections.abc import Awaitable
 from contextlib import AsyncExitStack
 from typing import Any
 from typing import Literal
@@ -20,7 +23,9 @@ from urllib.parse import urlsplit
 
 import httpx
 from nat.builder.builder import Builder
+from nat.builder.context import Context
 from nat.cli.register_workflow import register_per_user_function_group
+from nat.plugins.mcp.client.client_base import MCPBaseClient
 from nat.plugins.mcp.client.client_config import MCPServerConfig
 from nat.plugins.mcp.client.client_config import PerUserMCPClientConfig
 from nat.plugins.mcp.client.client_impl import PerUserMCPFunctionGroup
@@ -31,9 +36,11 @@ from pydantic import HttpUrl
 from datarobot_genai.dragent.cross_app_access_config import CrossApplicationAccessConfig
 from datarobot_genai.dragent.cross_app_access_config import TokenEndpointAuthMethod
 from datarobot_genai.dragent.http_client import get_retriable_async_http_client
+from datarobot_genai.dragent.plugins.okta_a2a_auth import SESSION_INBOUND_HEADERS
 from datarobot_genai.dragent.plugins.okta_a2a_auth import (
     OAuth2CrossApplicationAccessOAuth2AuthProvider,
 )
+from datarobot_genai.dragent.plugins.okta_a2a_auth import SessionInboundHeaders
 from datarobot_genai.dragent.plugins.okta_a2a_auth import _CrossAppFlowParams
 
 #: Member of the protected resource metadata document carrying the
@@ -215,6 +222,55 @@ async def setup_auth_provider(
     return auth_provider
 
 
+def _wrap_session_calls(client: MCPBaseClient, session_headers: SessionInboundHeaders) -> None:
+    """Send each call with its caller's token on a live session; fail it if the session dies."""
+
+    async def connect_if_down() -> None:
+        # NAT reconnects only inside a call on a live session. After its reconnect fails (the
+        # server restarting), get_tool raises "not initialized" until something else revives it.
+        if client.is_connected:
+            return
+        async with client._reconnect_lock:  # NAT's own: never tear down a session it just rebuilt
+            if not client.is_connected:
+                await client._run_lifecycle_command("reconnect")
+
+    async def unless_session_dies(call: Awaitable[Any]) -> Any:
+        # A call in flight when NAT's session task dies gets no answer and would wait out its
+        # whole timeout (300 s). Fail it instead. No retry: the server may have run the tool.
+        session_task = client._lifecycle_task
+        call_task = asyncio.ensure_future(call)
+        if session_task is None:
+            return await call_task
+        try:
+            await asyncio.wait({call_task, session_task}, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            call_task.cancel()
+            raise
+        if call_task.done():
+            return call_task.result()
+        call_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await call_task
+        raise ConnectionError(f"MCP session to {client.server_name} closed during the call")
+
+    # NAT's tool clients reach these through the client's attributes, so wrapping them here
+    # covers every call. The real-client tests check this against NAT's code.
+    for name in ("get_tool", "get_tools", "call_tool"):
+        method = getattr(client, name)
+
+        async def wrapped(*args: Any, _method: Any = method, **kwargs: Any) -> Any:
+            session_headers.update(Context.get().metadata.headers)
+            # A lifecycle task NAT starts again during this call copies this context.
+            token = SESSION_INBOUND_HEADERS.set(session_headers)
+            try:
+                await connect_if_down()
+                return await unless_session_dies(_method(*args, **kwargs))
+            finally:
+                SESSION_INBOUND_HEADERS.reset(token)
+
+        setattr(client, name, wrapped)
+
+
 @register_per_user_function_group(config_type=MCPClientWithXAASupportConfig)
 async def mcp_client_with_xaa_support_function_group(
     config: MCPClientWithXAASupportConfig,
@@ -224,12 +280,18 @@ async def mcp_client_with_xaa_support_function_group(
     if not isinstance(auth_provider, OAuth2CrossApplicationAccessOAuth2AuthProvider):
         raise ValueError("The auth_provider shall be a okta_cross_app_access type auth provider.")
 
+    session_headers = SessionInboundHeaders(Context.get().metadata.headers)
     async with AsyncExitStack() as stack:
         try:
             await setup_auth_provider(auth_provider, config)
-            group = await stack.enter_async_context(
-                per_user_mcp_client_function_group(config, builder)
-            )
+            # NAT starts the session's tasks while opening it, so they all see this holder.
+            token = SESSION_INBOUND_HEADERS.set(session_headers)
+            try:
+                group = await stack.enter_async_context(
+                    per_user_mcp_client_function_group(config, builder)
+                )
+            finally:
+                SESSION_INBOUND_HEADERS.reset(token)
         except Exception:
             # The runtime enters this exception handling block when
             # - MCP well-known OAuth protected resource metadata retrieval fails, or
@@ -247,4 +309,6 @@ async def mcp_client_with_xaa_support_function_group(
             yield PerUserMCPFunctionGroup(config=config)
             return
 
+        if group.mcp_client is not None:
+            _wrap_session_calls(group.mcp_client, session_headers)
         yield group

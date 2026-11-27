@@ -89,6 +89,8 @@ import os
 import time
 import uuid
 from collections.abc import AsyncGenerator
+from collections.abc import Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
@@ -851,6 +853,43 @@ def get_token_exchange(
     return OktaTokenExchange(config, token_exchange_cache)
 
 
+def _token_exp(token: str) -> float:
+    try:
+        return float(XAATokenExchangeCacheManager.get_jwt_json_without_validating(token)["exp"])
+    except (jwt.PyJWTError, KeyError, TypeError, ValueError, AttributeError):
+        return 0.0
+
+
+@dataclass
+class SessionInboundHeaders:
+    """The inbound headers one MCP session authenticates with: those of its newest caller token."""
+
+    headers: Mapping[str, str] | None = None
+
+    def update(self, headers: Mapping[str, str] | None) -> None:
+        """Take a call's headers unless they carry no caller token or one that expires sooner."""
+        token = find_idp_token(headers or {})
+        if token is None:
+            return
+        held = find_idp_token(self.headers or {})
+        if held is None or _token_exp(token) >= _token_exp(held):
+            self.headers = headers
+
+
+# NAT's MCP client sends from a task started when its session opened, and that task's NAT
+# context keeps the opening request's headers. The session's holder has the newest caller's.
+SESSION_INBOUND_HEADERS: ContextVar[SessionInboundHeaders | None] = ContextVar(
+    "session_inbound_headers", default=None
+)
+
+
+def _inbound_headers() -> Mapping[str, str]:
+    session = SESSION_INBOUND_HEADERS.get()
+    if session is not None:
+        return session.headers or {}
+    return Context.get().metadata.headers or {}
+
+
 # ---------------------------------------------------------------------------
 # OAuth2CrossApplicationAccessOAuth2AuthProvider
 # ---------------------------------------------------------------------------
@@ -909,7 +948,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         return set(TOKEN_HEADERS)
 
     def get_forwardable_x_datarobot_headers_from_inbound_request(self) -> list[HeaderCred]:
-        headers: dict[str, str] = Context.get().metadata.headers or {}
+        headers = _inbound_headers()
 
         return [
             HeaderCred(name=header_key, value=SecretStr(header_value))
@@ -959,9 +998,7 @@ class OAuth2CrossApplicationAccessOAuth2AuthProvider(
         Uses ``inbound_token.find_idp_token``, the same function audience validation uses, so
         this cannot exchange a token from a header the validator never inspected.
         """
-        headers: dict[str, str] = Context.get().metadata.headers or {}
-
-        token = find_idp_token(headers)
+        token = find_idp_token(_inbound_headers())
         if token is not None:
             return token
 
